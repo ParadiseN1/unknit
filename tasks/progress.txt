@@ -945,3 +945,36 @@
   - Use `vscode.Disposable.from(...disposables)` for composite disposal
   - For custom editors, document revert may be needed to refresh after external file changes
 ---
+
+## 2026-01-28 - US-035
+- **What was implemented**: VS Code extension packaging for distribution
+- **Files created**:
+  - `packages/vscode/icon.svg` - SVG source for extension icon
+  - `packages/vscode/icon.png` - 128x128 PNG extension icon (purple gradient with hierarchy symbol)
+  - `packages/vscode/README.md` - Extension readme with feature overview and usage instructions
+  - `packages/vscode/LICENSE` - MIT license file
+  - `packages/vscode/.vscodeignore` - Files to exclude from vsix package
+- **Files changed**:
+  - `packages/vscode/package.json` - Added icon, license, repository fields; updated package script with --no-dependencies flag
+- **Features implemented**:
+  - Extension icon with gradient background and hierarchy/outline symbol representing unknit functionality
+  - README with feature sections: Custom Editor, Navigation, Generation, Validation, Synchronization
+  - Commands table and configuration table for documentation
+  - vsce packaging configured with `--no-dependencies` flag for pnpm workspace compatibility
+  - .vscodeignore excludes source files, turbo cache, and build configs from final package
+  - vsix builds successfully at 607KB with all required files
+- **Package contents**:
+  - icon.png (3KB) - Extension icon
+  - package.json (4KB) - Extension manifest
+  - readme.md (2.5KB) - Documentation
+  - LICENSE.txt (1KB) - MIT license
+  - dist/extension.js (1MB) - Bundled extension code
+  - dist/extension.js.map (2.1MB) - Source maps
+- **Learnings for future iterations:**
+  - Use `vsce package --no-dependencies` for pnpm workspaces since vsce uses npm internally
+  - esbuild bundles all dependencies into the extension.js, so npm dependency checks are not needed
+  - ImageMagick `magick` command replaces deprecated `convert` for SVG to PNG conversion
+  - VS Code extensions require icon.png in root and reference it in package.json "icon" field
+  - .vscodeignore patterns work like .gitignore - exclude source files, config, and build artifacts
+  - Vsix is a zip format - can verify contents with `unzip -l`
+---
