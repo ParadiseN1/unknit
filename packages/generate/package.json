@@ -23,7 +23,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.35.0",
-    "@unknit/core": "workspace:*"
+    "@unknit/core": "workspace:*",
+    "yaml": "^2.7.0"
   },
   "devDependencies": {
     "typescript": "^5.3.0",

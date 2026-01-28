@@ -2,18 +2,19 @@
 
 export const VERSION = '0.0.1';
 
-// Placeholder exports for future implementations
-
-/**
- * Configuration for unknit project
- * Will be loaded from .unknit.yaml
- */
-export interface UnknitConfig {
-  // Internal packages - imports from these are marked as internal
-  internalPackages?: string[];
-  // External packages - explicitly mark as external (overrides auto-detection)
-  externalPackages?: string[];
-}
+// Configuration loader exports
+export {
+  type UnknitConfig,
+  type RawUnknitConfig,
+  type ConfigLoadResult,
+  DEFAULT_CONFIG,
+  CONFIG_FILE_NAME,
+  ConfigError,
+  ConfigLoader,
+  loadConfig,
+  parseConfigContent,
+  mergeWithDefaults,
+} from './config.js';
 
 /**
  * Metadata extracted from source code for LLM context
