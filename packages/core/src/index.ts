@@ -12,3 +12,12 @@ export {
   type ValidationDiagnostic,
   NodeType,
 } from './types.js';
+
+// Export tokenizer
+export {
+  type Token,
+  TokenType,
+  Tokenizer,
+  TokenizerError,
+  tokenize,
+} from './tokenizer.js';
