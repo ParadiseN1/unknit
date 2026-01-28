@@ -4,6 +4,7 @@ import { registerGoToBlockCommand } from './go-to-block-command';
 import { registerGenerateCommand } from './generate-command';
 import { registerValidateCommand } from './validate-command';
 import { registerSyncCommand } from './sync-command';
+import { registerDiagnosticsProvider } from './diagnostics-provider';
 
 /**
  * Called when the extension is activated.
@@ -26,6 +27,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register the "Unknit: Sync" command
   context.subscriptions.push(registerSyncCommand(context));
+
+  // Register diagnostics provider for automatic validation on open/save
+  registerDiagnosticsProvider(context);
 }
 
 /**
