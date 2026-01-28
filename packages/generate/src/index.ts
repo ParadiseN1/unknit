@@ -82,6 +82,15 @@ export {
   formatImportStatements,
 } from './prompt-builder.js';
 
+// LLM client exports
+export {
+  type LLMClientOptions,
+  type LLMGenerationResult,
+  type LLMGenerationError,
+  LLMClient,
+  generateUnknit,
+} from './llm-client.js';
+
 /**
  * Metadata extracted from source code for LLM context
  */
