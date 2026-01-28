@@ -697,3 +697,33 @@
   - VS Code webview state API preserves state across panel hide/show but not across reloads
   - Hidden placeholder chevrons maintain consistent alignment for leaf nodes
 ---
+
+## 2026-01-28 - US-027
+- **What was implemented**: Source code display on expand for the custom editor
+- **Files changed**:
+  - `packages/vscode/src/unknit-editor-provider.ts` - Added source code loading and display functionality
+- **Features implemented**:
+  - `nodeSourceMap` - Maps node IDs to SourceRef for source code lookup
+  - `loadAndSendSourceCode()` - Reads source file using SourceRef and sends to webview
+  - `getLanguageFromPath()` - Determines programming language from file extension
+  - Source code container in each node's children section (hidden by default)
+  - Webview JavaScript handles `sourceCode` and `sourceCodeError` messages
+  - Displays source code with line numbers, file path, and line range header
+  - Error handling for missing or unreadable source files
+  - State persistence for expanded nodes with source code loaded
+  - On webview restore, re-requests source code for previously expanded nodes
+- **Key implementation patterns**:
+  - `data-source-for` attribute links source containers to their node IDs
+  - Source code displayed with monospace font, line numbers, and VS Code theme colors
+  - `escapeHtml()` in webview JavaScript prevents XSS when displaying source code
+  - Relative source paths resolved relative to .unknit file directory
+  - `expandedWithSourceNodes` Set tracks which expanded nodes have source refs
+  - `saveState()` function consolidates state persistence
+- **Learnings for future iterations:**
+  - Use `fs.readFile()` from `fs/promises` for async file operations in VS Code extensions
+  - `path.isAbsolute()` to detect absolute vs relative paths
+  - Source line extraction uses 1-indexed to 0-indexed conversion: `lines.slice(startLine - 1, endLine)`
+  - Webview state persistence with `vscode.getState()`/`vscode.setState()` survives panel hide/show
+  - When restoring state, re-request source code by sending `toggleExpand` messages
+  - `generateNodeId(node)` now stores source ref in map for later lookup
+---
