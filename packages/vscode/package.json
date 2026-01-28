@@ -5,6 +5,12 @@
   "version": "0.0.1",
   "publisher": "unknit",
   "private": true,
+  "icon": "icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/unknit/unknit"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -123,7 +129,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "clean": "rm -rf dist",
-    "package": "vsce package"
+    "package": "vsce package --no-dependencies"
   },
   "dependencies": {
     "@unknit/core": "workspace:*",
