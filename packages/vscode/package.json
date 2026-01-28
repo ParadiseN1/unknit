@@ -1,0 +1,62 @@
+{
+  "name": "unknit-vscode",
+  "displayName": "Unknit",
+  "description": "Code review tool for rapidly reviewing AI-generated code through scannable hierarchical outlines",
+  "version": "0.0.1",
+  "publisher": "unknit",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onLanguage:unknit"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "unknit",
+        "aliases": [
+          "Unknit",
+          "unknit"
+        ],
+        "extensions": [
+          ".unknit"
+        ]
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "unknit.editor",
+        "displayName": "Unknit Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.unknit"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "build:watch": "node esbuild.config.js --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@unknit/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.3.0"
+  }
+}
