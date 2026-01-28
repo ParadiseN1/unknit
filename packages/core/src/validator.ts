@@ -277,4 +277,281 @@ export class SourceFileValidator {
   async validateNodes(nodes: UnknitNode[]): Promise<ValidationResult> {
     return validateNodes(nodes, this.options);
   }
+
+  /**
+   * Validates source coverage for all nodes, checking for overlaps and gaps.
+   */
+  async validateCoverage(
+    nodes: UnknitNode[],
+    expectedRange?: { file: string; startLine: number; endLine: number }
+  ): Promise<ValidationResult> {
+    return validateCoverage(nodes, this.options, expectedRange);
+  }
+}
+
+/**
+ * Represents a source reference with its position in the unknit file.
+ */
+interface SourceRefWithPosition {
+  sourceRef: SourceRef;
+  unknitLine: number;
+}
+
+/**
+ * Collects all source references from nodes, including their unknit line positions.
+ */
+function collectAllSourceRefs(nodes: UnknitNode[]): SourceRefWithPosition[] {
+  const refs: SourceRefWithPosition[] = [];
+  let currentLine = 1;
+
+  for (const node of nodes) {
+    collectSourceRefsRecursive(node, currentLine, refs);
+    currentLine += countNodeLines(node);
+    // Add blank line between top-level functions
+    currentLine += 1;
+  }
+
+  return refs;
+}
+
+/**
+ * Recursively collects source references from a node and its children.
+ */
+function collectSourceRefsRecursive(
+  node: UnknitNode,
+  lineNumber: number,
+  refs: SourceRefWithPosition[]
+): void {
+  if (node.sourceRef) {
+    refs.push({ sourceRef: node.sourceRef, unknitLine: lineNumber });
+  }
+
+  if (node.children) {
+    let childLine = lineNumber + 1;
+    for (const child of node.children) {
+      collectSourceRefsRecursive(child, childLine, refs);
+      childLine += countNodeLines(child);
+    }
+  }
+}
+
+/**
+ * Groups source references by file.
+ */
+function groupByFile(
+  refs: SourceRefWithPosition[]
+): Map<string, SourceRefWithPosition[]> {
+  const groups = new Map<string, SourceRefWithPosition[]>();
+
+  for (const ref of refs) {
+    const file = ref.sourceRef.file;
+    const existing = groups.get(file);
+    if (existing) {
+      existing.push(ref);
+    } else {
+      groups.set(file, [ref]);
+    }
+  }
+
+  return groups;
+}
+
+/**
+ * Detects overlapping source references within a single file.
+ * Returns warnings for each overlap detected.
+ */
+function detectOverlaps(
+  refs: SourceRefWithPosition[],
+  file: string
+): ValidationDiagnostic[] {
+  const diagnostics: ValidationDiagnostic[] = [];
+
+  // Sort by start line for easier comparison
+  const sorted = [...refs].sort(
+    (a, b) => a.sourceRef.startLine - b.sourceRef.startLine
+  );
+
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    if (!current) continue;
+
+    for (let j = i + 1; j < sorted.length; j++) {
+      const next = sorted[j];
+      if (!next) continue;
+
+      // Check if ranges overlap
+      // Overlap occurs when: current.end >= next.start
+      if (current.sourceRef.endLine >= next.sourceRef.startLine) {
+        const overlapStart = next.sourceRef.startLine;
+        const overlapEnd = Math.min(
+          current.sourceRef.endLine,
+          next.sourceRef.endLine
+        );
+
+        diagnostics.push({
+          severity: 'warning',
+          message: `Overlapping source references in ${file}: lines ${overlapStart}-${overlapEnd} are covered by multiple blocks`,
+          range: createRangeForLine(current.unknitLine),
+          sourceRef: current.sourceRef,
+        });
+      } else {
+        // Since sorted, if no overlap with next, won't overlap with later ones
+        break;
+      }
+    }
+  }
+
+  return diagnostics;
+}
+
+/**
+ * Detects gaps in source coverage within a file's expected range.
+ * Returns warnings for each gap detected.
+ */
+function detectGaps(
+  refs: SourceRefWithPosition[],
+  file: string,
+  expectedStartLine: number,
+  expectedEndLine: number
+): ValidationDiagnostic[] {
+  const diagnostics: ValidationDiagnostic[] = [];
+
+  // Build a set of all covered lines
+  const coveredLines = new Set<number>();
+  for (const ref of refs) {
+    for (
+      let line = ref.sourceRef.startLine;
+      line <= ref.sourceRef.endLine;
+      line++
+    ) {
+      coveredLines.add(line);
+    }
+  }
+
+  // Find gaps in coverage
+  const gaps: Array<{ start: number; end: number }> = [];
+  let gapStart: number | null = null;
+
+  for (let line = expectedStartLine; line <= expectedEndLine; line++) {
+    if (!coveredLines.has(line)) {
+      if (gapStart === null) {
+        gapStart = line;
+      }
+    } else {
+      if (gapStart !== null) {
+        gaps.push({ start: gapStart, end: line - 1 });
+        gapStart = null;
+      }
+    }
+  }
+
+  // Handle trailing gap
+  if (gapStart !== null) {
+    gaps.push({ start: gapStart, end: expectedEndLine });
+  }
+
+  // Create diagnostics for each gap
+  for (const gap of gaps) {
+    const rangeStr =
+      gap.start === gap.end ? `line ${gap.start}` : `lines ${gap.start}-${gap.end}`;
+    diagnostics.push({
+      severity: 'warning',
+      message: `Coverage gap in ${file}: ${rangeStr} not mapped to any unknit block`,
+      range: {
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 1,
+      },
+      sourceRef: {
+        file,
+        startLine: gap.start,
+        endLine: gap.end,
+      },
+    });
+  }
+
+  return diagnostics;
+}
+
+/**
+ * Options for expected source range when validating coverage.
+ */
+export interface CoverageExpectedRange {
+  /** Source file path */
+  file: string;
+  /** Expected start line (1-indexed) */
+  startLine: number;
+  /** Expected end line (1-indexed, inclusive) */
+  endLine: number;
+}
+
+/**
+ * Validates source coverage for all nodes, detecting overlaps and gaps.
+ *
+ * @param nodes - The AST nodes to validate coverage for
+ * @param options - Validator options (used for base path resolution, not used for coverage)
+ * @param expectedRange - Optional expected range to check for gaps
+ * @returns Validation result with warnings for overlaps and gaps
+ */
+export async function validateCoverage(
+  nodes: UnknitNode[],
+  options: ValidatorOptions,
+  expectedRange?: CoverageExpectedRange
+): Promise<ValidationResult> {
+  // Avoid unused parameter warning
+  void options;
+
+  const allDiagnostics: ValidationDiagnostic[] = [];
+
+  // Collect all source references from the nodes
+  const allRefs = collectAllSourceRefs(nodes);
+
+  // Group by file
+  const byFile = groupByFile(allRefs);
+
+  // Check for overlaps in each file
+  for (const [file, refs] of byFile) {
+    const overlaps = detectOverlaps(refs, file);
+    allDiagnostics.push(...overlaps);
+  }
+
+  // Check for gaps if expected range is provided
+  if (expectedRange) {
+    const refs = byFile.get(expectedRange.file) ?? [];
+    const gaps = detectGaps(
+      refs,
+      expectedRange.file,
+      expectedRange.startLine,
+      expectedRange.endLine
+    );
+    allDiagnostics.push(...gaps);
+  }
+
+  return {
+    valid: allDiagnostics.length === 0,
+    diagnostics: allDiagnostics,
+  };
+}
+
+/**
+ * Source coverage validator class.
+ * Provides validation of source coverage, detecting overlaps and gaps.
+ */
+export class SourceCoverageValidator {
+  private options: ValidatorOptions;
+
+  constructor(options: ValidatorOptions) {
+    this.options = options;
+  }
+
+  /**
+   * Validates source coverage for all nodes.
+   */
+  async validateCoverage(
+    nodes: UnknitNode[],
+    expectedRange?: CoverageExpectedRange
+  ): Promise<ValidationResult> {
+    return validateCoverage(nodes, this.options, expectedRange);
+  }
 }

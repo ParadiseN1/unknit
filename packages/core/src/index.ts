@@ -42,9 +42,12 @@ export {
 // Export validator
 export {
   SourceFileValidator,
+  SourceCoverageValidator,
   validateSourceRef,
   validateNode,
   validateNodes,
+  validateCoverage,
   type ValidatorOptions,
   type ValidationResult,
+  type CoverageExpectedRange,
 } from './validator.js';
