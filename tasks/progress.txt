@@ -727,3 +727,31 @@
   - When restoring state, re-request source code by sending `toggleExpand` messages
   - `generateNodeId(node)` now stores source ref in map for later lookup
 ---
+
+## 2026-01-28 - US-028
+- **What was implemented**: Go to Source navigation from unknit blocks to source code
+- **Files changed**:
+  - `packages/vscode/src/unknit-editor-provider.ts` - Added double-click handler, context menu, and goToSource message handling
+- **Features implemented**:
+  - Double-click on any block (function, call, block, etc.) opens source file at startLine
+  - Right-click context menu with "Go to Source" option
+  - `handleGoToSource()` method opens source file and positions cursor
+  - Uses `vscode.workspace.openTextDocument()` and `vscode.window.showTextDocument()`
+  - Cursor positioned at startLine using `vscode.Position` and `editor.selection`
+  - `editor.revealRange()` with `TextEditorRevealType.InCenter` to scroll to the line
+  - Warning message if block has no source reference
+  - Error message if source file cannot be opened
+- **Key implementation patterns**:
+  - Custom context menu using DOM elements with fixed positioning
+  - `contextMenuTarget` variable stores node ID for menu action
+  - Context menu hidden on any click outside the menu
+  - Context menu styled with VS Code theme variables (--vscode-menu-*)
+  - Double-click finds nearest `.unknit-expandable` element and extracts node ID from chevron
+  - Source path resolution reuses same logic as source code display
+- **Learnings for future iterations:**
+  - Use `vscode.Position` with 0-indexed line numbers (subtract 1 from 1-indexed sourceRef)
+  - `vscode.Selection(position, position)` creates a cursor without selection
+  - `TextEditorRevealType.InCenter` provides best UX for navigation
+  - Custom context menus in webviews require manual DOM creation and event handling
+  - VS Code menu theme variables: --vscode-menu-background, --vscode-menu-foreground, --vscode-menu-selectionBackground
+---
