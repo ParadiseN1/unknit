@@ -59,3 +59,13 @@ export {
   getLinesForBlock,
   getBlockPath,
 } from './mapper.js';
+
+// Export smart updater
+export {
+  SmartUpdater,
+  detectLineShifts,
+  applyShiftsToSourceRef,
+  applyShiftsToNodes,
+  type LineShift,
+  type UpdateResult,
+} from './updater.js';
