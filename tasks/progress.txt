@@ -852,3 +852,35 @@
   - Parse errors and validation errors displayed together in Problems panel
   - Output channel provides detailed context while diagnostics enable inline error display
 ---
+
+## 2026-01-28 - US-032
+- **What was implemented**: Unknit Sync command for VS Code extension
+- **Files created**:
+  - `packages/vscode/src/sync-command.ts` - Sync command handler
+- **Files changed**:
+  - `packages/vscode/package.json` - Added command, activation event, and menu entries for .unknit files
+  - `packages/vscode/src/extension.ts` - Registered the sync command
+- **Features implemented**:
+  - `unknit.sync` command registered in package.json
+  - Command available in editor context menu and command palette for .unknit files
+  - `syncCommand()` parses .unknit file and uses SmartUpdater for line number updates
+  - Uses `detectStructuralChanges()` from @unknit/core to detect function changes
+  - Custom `getLanguageFromPath()` that supports Python, TypeScript, and JavaScript
+  - Reads source files using `readPythonSource()` or `readTypeScriptSource()` from @unknit/generate
+  - Extracts function signatures and compares against unknit nodes
+  - Shows notification with "Regenerate" and "View Details" buttons when structural changes detected
+  - Output channel "Unknit Sync" displays detailed results
+  - Serializes updated nodes back to unknit format and saves file
+- **Key implementation patterns**:
+  - Uses SmartUpdater to manage node updates
+  - Collects all referenced source files from unknit nodes recursively
+  - Structural change detection runs for each source file referenced
+  - If content changed, uses vscode.WorkspaceEdit to replace document content
+  - Warning message offers quick regeneration via `unknit.generate` command
+- **Learnings for future iterations:**
+  - `getLanguageFromPath` from @unknit/generate only returns typescript/javascript - need custom version for Python
+  - For full line shift detection, would need to store snapshots of source content when last synced
+  - SmartUpdater.update() requires both original and modified content for line shift detection
+  - Structural change detection is the primary sync feature when snapshots aren't available
+  - VS Code WorkspaceEdit with replace() is idiomatic way to update document content
+---
