@@ -818,3 +818,37 @@
   - Progress notifications should include the file being processed
   - Output channel with `show(true)` preserves focus on the current editor
 ---
+
+## 2026-01-28 - US-031
+- **What was implemented**: Unknit Validate command for VS Code extension
+- **Files created**:
+  - `packages/vscode/src/validate-command.ts` - Validate command handler
+- **Files changed**:
+  - `packages/vscode/package.json` - Added command, activation event, and menu entries for .unknit files
+  - `packages/vscode/src/extension.ts` - Registered the validate command
+- **Features implemented**:
+  - `unknit.validate` command registered in package.json
+  - Command available in editor context menu and command palette for .unknit files
+  - `validateCommand()` parses .unknit file and runs core validators
+  - Uses `parseFunctionsWithRecovery()` from @unknit/core for parsing
+  - Runs `validateNodes()` to check source file existence and line bounds
+  - Runs `validateCoverage()` to check for overlapping source references
+  - `validateUnknitFile()` helper for use by other components (diagnostics on save)
+  - `getDiagnosticsCollection()` exports diagnostics collection for reuse
+  - Output channel "Unknit Validation" displays detailed results
+  - Diagnostics collection updated with errors and warnings
+  - Parse errors shown with line/column information
+  - Summary notification shows error/warning counts
+- **Key implementation patterns**:
+  - `convertSeverity()` maps ValidationDiagnostic severity to VS Code DiagnosticSeverity
+  - `convertDiagnostic()` converts core diagnostics to VS Code format (1-indexed to 0-indexed)
+  - Diagnostics collection persisted via `context.subscriptions.push()`
+  - Output channel uses icons (✓, ✗, ⚠) for visual feedback
+  - Source file paths resolved relative to .unknit file directory
+- **Learnings for future iterations:**
+  - VS Code DiagnosticSeverity uses 0-indexed line/column numbers
+  - Use `vscode.languages.createDiagnosticCollection('name')` for package-scoped diagnostics
+  - Export `validateUnknitFile()` and `getDiagnosticsCollection()` for reuse in file watcher (US-034)
+  - Parse errors and validation errors displayed together in Problems panel
+  - Output channel provides detailed context while diagnostics enable inline error display
+---
