@@ -22,7 +22,7 @@ export class ParseError extends Error {
 
 /**
  * Parser for Unknit syntax.
- * Currently implements parsing of function definitions (US-005).
+ * Implements parsing of function definitions, blocks, and calls (US-005, US-006).
  */
 export class Parser {
   private tokens: Token[] = [];
@@ -100,8 +100,8 @@ export class Parser {
       children: [],
     };
 
-    // Skip function body (body parsing will be in US-006)
-    this.skipFunctionBody();
+    // Parse function body
+    node.children = this.parseFunctionBody();
 
     return node;
   }
@@ -185,13 +185,13 @@ export class Parser {
   }
 
   /**
-   * Skip the function body (all indented content after the function definition).
-   * This tracks indent level and skips until we return to the base level.
+   * Parse the function body and build the AST with proper parent-child relationships.
+   * The body is indentation-based: INDENT starts a block, DEDENT ends it.
    */
-  private skipFunctionBody(): void {
-    let indentLevel = 0;
+  private parseFunctionBody(): UnknitNode[] {
+    const children: UnknitNode[] = [];
 
-    // First, skip to end of the current line (the function signature line)
+    // Skip any trailing tokens on the function definition line (like source refs)
     while (
       !this.isAtEnd() &&
       !this.check(TokenType.NEWLINE) &&
@@ -199,35 +199,290 @@ export class Parser {
     ) {
       this.advance();
     }
+
     // Consume the newline if present
     if (this.check(TokenType.NEWLINE)) {
       this.advance();
     }
 
-    // Now skip all indented content (the function body)
-    while (!this.isAtEnd()) {
-      const tokenType = this.peek().type;
+    // Check for indent to enter function body
+    if (!this.check(TokenType.INDENT)) {
+      // No body - empty function
+      return children;
+    }
 
-      if (tokenType === TokenType.INDENT) {
-        indentLevel++;
-        this.advance();
-      } else if (tokenType === TokenType.DEDENT) {
-        indentLevel--;
-        this.advance();
-        // If we've dedented back to base level, we're done with this function
-        if (indentLevel <= 0) {
-          break;
-        }
-      } else if (tokenType === TokenType.NEWLINE) {
-        this.advance();
-      } else if (indentLevel === 0) {
-        // We're at base level and not at INDENT - we've found the next top-level element
+    // Consume the indent
+    this.advance();
+
+    // Parse body elements until we hit DEDENT
+    while (!this.isAtEnd() && !this.check(TokenType.DEDENT)) {
+      this.skipNewlines();
+
+      if (this.check(TokenType.DEDENT) || this.isAtEnd()) {
         break;
-      } else {
-        // We're inside the function body, skip this token
-        this.advance();
+      }
+
+      const node = this.parseBodyElement();
+      if (node) {
+        children.push(node);
       }
     }
+
+    // Consume the dedent
+    if (this.check(TokenType.DEDENT)) {
+      this.advance();
+    }
+
+    return children;
+  }
+
+  /**
+   * Parse a single body element (call, return, early exit, error handler, or block).
+   */
+  private parseBodyElement(): UnknitNode | null {
+    this.skipNewlines();
+
+    if (this.isAtEnd() || this.check(TokenType.DEDENT)) {
+      return null;
+    }
+
+    // Check for error handler: on error:
+    if (this.check(TokenType.ON)) {
+      return this.parseErrorHandler();
+    }
+
+    // Check for external call: @name()
+    if (this.check(TokenType.AT)) {
+      return this.parseExternalCall();
+    }
+
+    // Check for early exit: *->
+    if (this.check(TokenType.EARLY_EXIT)) {
+      return this.parseEarlyExit();
+    }
+
+    // Check for return: ->
+    if (this.check(TokenType.ARROW)) {
+      return this.parseReturn();
+    }
+
+    // Check for identifier (internal call or block label)
+    if (this.check(TokenType.IDENTIFIER)) {
+      return this.parseCallOrBlock();
+    }
+
+    // Unknown token - skip it
+    this.advance();
+    return null;
+  }
+
+  /**
+   * Parse an internal call or a block label.
+   * Internal call: name()
+   * Block label: name: (followed by indented children)
+   */
+  private parseCallOrBlock(): UnknitNode {
+    const nameToken = this.advance();
+    const name = nameToken.value;
+
+    // Check if this is a call: name()
+    if (this.check(TokenType.LPAREN)) {
+      this.advance(); // consume (
+      this.consume(TokenType.RPAREN, "Expected ')' after call");
+
+      const node: UnknitNode = {
+        type: NodeType.call,
+        name,
+        children: [],
+      };
+
+      // Check for nested children (indented block after call)
+      node.children = this.parseNestedChildren();
+
+      return node;
+    }
+
+    // Check if this is a block label: name:
+    if (this.check(TokenType.COLON)) {
+      this.advance(); // consume :
+
+      const node: UnknitNode = {
+        type: NodeType.block,
+        name,
+        children: [],
+      };
+
+      // Parse nested children
+      node.children = this.parseNestedChildren();
+
+      return node;
+    }
+
+    // Just an identifier without () or : - treat as a block
+    const node: UnknitNode = {
+      type: NodeType.block,
+      name,
+      children: [],
+    };
+
+    node.children = this.parseNestedChildren();
+
+    return node;
+  }
+
+  /**
+   * Parse an external call: @name()
+   */
+  private parseExternalCall(): UnknitNode {
+    this.advance(); // consume @
+
+    const nameToken = this.consume(
+      TokenType.IDENTIFIER,
+      'Expected function name after @'
+    );
+    const name = nameToken.value;
+
+    this.consume(TokenType.LPAREN, "Expected '(' after external function name");
+    this.consume(TokenType.RPAREN, "Expected ')' after external call");
+
+    const node: UnknitNode = {
+      type: NodeType.external_call,
+      name,
+      children: [],
+    };
+
+    // Check for nested children
+    node.children = this.parseNestedChildren();
+
+    return node;
+  }
+
+  /**
+   * Parse an early exit: *-> value
+   */
+  private parseEarlyExit(): UnknitNode {
+    this.advance(); // consume *->
+
+    // Parse the exit value if present
+    let name = '';
+    if (this.check(TokenType.IDENTIFIER)) {
+      name = this.advance().value;
+    }
+
+    const node: UnknitNode = {
+      type: NodeType.early_exit,
+      name,
+      children: [],
+    };
+
+    // Check for nested children
+    node.children = this.parseNestedChildren();
+
+    return node;
+  }
+
+  /**
+   * Parse a return: -> value
+   */
+  private parseReturn(): UnknitNode {
+    this.advance(); // consume ->
+
+    // Parse the return value if present
+    let name = '';
+    if (this.check(TokenType.IDENTIFIER)) {
+      name = this.advance().value;
+    }
+
+    const node: UnknitNode = {
+      type: NodeType.return,
+      name,
+      children: [],
+    };
+
+    // Check for nested children
+    node.children = this.parseNestedChildren();
+
+    return node;
+  }
+
+  /**
+   * Parse an error handler: on error:
+   */
+  private parseErrorHandler(): UnknitNode {
+    this.advance(); // consume 'on'
+
+    // Expect an identifier (typically 'error')
+    const typeToken = this.consume(
+      TokenType.IDENTIFIER,
+      "Expected error type after 'on'"
+    );
+    const name = typeToken.value;
+
+    this.consume(TokenType.COLON, "Expected ':' after error type");
+
+    const node: UnknitNode = {
+      type: NodeType.error_handler,
+      name,
+      children: [],
+    };
+
+    // Parse nested children
+    node.children = this.parseNestedChildren();
+
+    return node;
+  }
+
+  /**
+   * Parse nested children after a body element.
+   * Handles INDENT/DEDENT for nested blocks.
+   */
+  private parseNestedChildren(): UnknitNode[] {
+    const children: UnknitNode[] = [];
+
+    // Skip any trailing content on this line (like source refs)
+    while (
+      !this.isAtEnd() &&
+      !this.check(TokenType.NEWLINE) &&
+      !this.check(TokenType.EOF) &&
+      !this.check(TokenType.INDENT) &&
+      !this.check(TokenType.DEDENT)
+    ) {
+      this.advance();
+    }
+
+    // Skip newline
+    if (this.check(TokenType.NEWLINE)) {
+      this.advance();
+    }
+
+    // Check for indent (nested content)
+    if (!this.check(TokenType.INDENT)) {
+      return children;
+    }
+
+    // Consume indent
+    this.advance();
+
+    // Parse children until dedent
+    while (!this.isAtEnd() && !this.check(TokenType.DEDENT)) {
+      this.skipNewlines();
+
+      if (this.check(TokenType.DEDENT) || this.isAtEnd()) {
+        break;
+      }
+
+      const node = this.parseBodyElement();
+      if (node) {
+        children.push(node);
+      }
+    }
+
+    // Consume dedent
+    if (this.check(TokenType.DEDENT)) {
+      this.advance();
+    }
+
+    return children;
   }
 
   /**
