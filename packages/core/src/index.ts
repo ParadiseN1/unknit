@@ -31,3 +31,10 @@ export {
   parseFunctionsWithRecovery,
   parseSourceRef,
 } from './parser.js';
+
+// Export serializer
+export {
+  Serializer,
+  serialize,
+  serializeSourceRef,
+} from './serializer.js';
