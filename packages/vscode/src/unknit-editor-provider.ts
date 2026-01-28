@@ -256,6 +256,104 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
             });
           });
 
+          // Handle double-click to go to source
+          document.addEventListener('dblclick', (event) => {
+            const expandable = event.target.closest('.unknit-expandable');
+            if (!expandable) return;
+
+            // Find the node ID from the chevron or parent element
+            const chevron = expandable.querySelector('.unknit-chevron[data-node-id]');
+            if (!chevron) return;
+
+            const nodeId = chevron.dataset.nodeId;
+            if (!nodeId) return;
+
+            // Send message to extension host to go to source
+            vscode.postMessage({
+              type: 'goToSource',
+              nodeId: nodeId
+            });
+          });
+
+          // Context menu handling
+          let contextMenuTarget = null;
+
+          document.addEventListener('contextmenu', (event) => {
+            const expandable = event.target.closest('.unknit-expandable');
+            if (!expandable) {
+              hideContextMenu();
+              return;
+            }
+
+            // Find the node ID from the chevron
+            const chevron = expandable.querySelector('.unknit-chevron[data-node-id]');
+            if (!chevron) {
+              hideContextMenu();
+              return;
+            }
+
+            const nodeId = chevron.dataset.nodeId;
+            if (!nodeId) {
+              hideContextMenu();
+              return;
+            }
+
+            // Prevent default browser context menu
+            event.preventDefault();
+
+            // Store the target node ID
+            contextMenuTarget = nodeId;
+
+            // Show our custom context menu
+            showContextMenu(event.clientX, event.clientY);
+          });
+
+          // Hide context menu when clicking elsewhere
+          document.addEventListener('click', (event) => {
+            if (!event.target.closest('.unknit-context-menu')) {
+              hideContextMenu();
+            }
+          });
+
+          function showContextMenu(x, y) {
+            let menu = document.querySelector('.unknit-context-menu');
+            if (!menu) {
+              menu = document.createElement('div');
+              menu.className = 'unknit-context-menu';
+              menu.innerHTML = '<div class="unknit-context-menu-item" data-action="goToSource">Go to Source</div>';
+              document.body.appendChild(menu);
+
+              // Handle menu item clicks
+              menu.addEventListener('click', (event) => {
+                const item = event.target.closest('.unknit-context-menu-item');
+                if (!item) return;
+
+                const action = item.dataset.action;
+                if (action === 'goToSource' && contextMenuTarget) {
+                  vscode.postMessage({
+                    type: 'goToSource',
+                    nodeId: contextMenuTarget
+                  });
+                }
+
+                hideContextMenu();
+              });
+            }
+
+            // Position the menu
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+            menu.classList.add('visible');
+          }
+
+          function hideContextMenu() {
+            const menu = document.querySelector('.unknit-context-menu');
+            if (menu) {
+              menu.classList.remove('visible');
+            }
+            contextMenuTarget = null;
+          }
+
           // Escape HTML for safe display
           function escapeHtml(text) {
             const div = document.createElement('div');
@@ -529,6 +627,30 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
       .unknit-source-loading {
         color: var(--vscode-descriptionForeground);
         font-style: italic;
+      }
+      .unknit-context-menu {
+        position: fixed;
+        background-color: var(--vscode-menu-background, #252526);
+        border: 1px solid var(--vscode-menu-border, #454545);
+        border-radius: 4px;
+        padding: 4px 0;
+        min-width: 150px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        z-index: 1000;
+        display: none;
+      }
+      .unknit-context-menu.visible {
+        display: block;
+      }
+      .unknit-context-menu-item {
+        padding: 6px 16px;
+        cursor: pointer;
+        color: var(--vscode-menu-foreground, #cccccc);
+        font-size: 13px;
+      }
+      .unknit-context-menu-item:hover {
+        background-color: var(--vscode-menu-selectionBackground, #094771);
+        color: var(--vscode-menu-selectionForeground, #ffffff);
       }
     `;
   }
@@ -846,8 +968,52 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
       case 'toggleExpand':
         this.handleToggleExpand(message, webview);
         break;
+      case 'goToSource':
+        this.handleGoToSource(message);
+        break;
       default:
         console.log('Unknown message type:', message.type);
+    }
+  }
+
+  /**
+   * Handles "Go to Source" requests.
+   * Opens the source file in the editor and positions the cursor at the block's startLine.
+   */
+  private async handleGoToSource(message: WebviewMessage): Promise<void> {
+    const nodeId = message.nodeId as string;
+
+    // Look up the source reference for this node
+    const sourceRef = this.nodeSourceMap[nodeId];
+    if (!sourceRef) {
+      vscode.window.showWarningMessage('No source reference available for this block');
+      return;
+    }
+
+    try {
+      // Resolve the source file path relative to the unknit document
+      const sourceFilePath = path.isAbsolute(sourceRef.file)
+        ? sourceRef.file
+        : path.join(this.currentDocumentDir, sourceRef.file);
+
+      // Open the source file
+      const document = await vscode.workspace.openTextDocument(sourceFilePath);
+      const editor = await vscode.window.showTextDocument(document);
+
+      // Position cursor at the start line (convert 1-indexed to 0-indexed)
+      const position = new vscode.Position(sourceRef.startLine - 1, 0);
+      const selection = new vscode.Selection(position, position);
+      editor.selection = selection;
+
+      // Reveal the line in the center of the editor
+      editor.revealRange(
+        new vscode.Range(position, position),
+        vscode.TextEditorRevealType.InCenter
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      vscode.window.showErrorMessage(`Failed to open source file: ${errorMessage}`);
     }
   }
 
