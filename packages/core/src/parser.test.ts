@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Parser, ParseError, parseFunctions } from './parser.js';
+import { Parser, ParseError, parseFunctions, parseSourceRef } from './parser.js';
 import { NodeType } from './types.js';
 
 describe('Parser', () => {
@@ -557,6 +557,292 @@ fn second() -> b:
 
       expect(nodes).toHaveLength(1);
       expect(nodes[0]?.name).toBe('test');
+    });
+  });
+
+  describe('source reference extraction (US-007)', () => {
+    describe('parseSourceRef function', () => {
+      it('parses source reference with line range', () => {
+        const result = parseSourceRef('{{src:path/to/file.ts:10-20}}');
+
+        expect(result).toEqual({
+          file: 'path/to/file.ts',
+          startLine: 10,
+          endLine: 20,
+        });
+      });
+
+      it('parses source reference with single line', () => {
+        const result = parseSourceRef('{{src:file.ts:42}}');
+
+        expect(result).toEqual({
+          file: 'file.ts',
+          startLine: 42,
+          endLine: 42,
+        });
+      });
+
+      it('parses source reference with deep path', () => {
+        const result = parseSourceRef('{{src:src/components/Button.tsx:1-50}}');
+
+        expect(result).toEqual({
+          file: 'src/components/Button.tsx',
+          startLine: 1,
+          endLine: 50,
+        });
+      });
+
+      it('handles Windows-style paths with colon in drive letter', () => {
+        const result = parseSourceRef('{{src:C:\\Users\\project\\file.ts:10-20}}');
+
+        expect(result).toEqual({
+          file: 'C:\\Users\\project\\file.ts',
+          startLine: 10,
+          endLine: 20,
+        });
+      });
+
+      it('returns undefined for invalid format', () => {
+        expect(parseSourceRef('not a source ref')).toBeUndefined();
+        expect(parseSourceRef('{{src:}}')).toBeUndefined();
+        expect(parseSourceRef('{{src:file}}')).toBeUndefined();
+        expect(parseSourceRef('{{src:file:}}')).toBeUndefined();
+        expect(parseSourceRef('{{src:file:abc}}')).toBeUndefined();
+        expect(parseSourceRef('{{wrong:file:10}}')).toBeUndefined();
+        expect(parseSourceRef('{src:file:10}')).toBeUndefined();
+      });
+
+      it('returns undefined for empty input', () => {
+        expect(parseSourceRef('')).toBeUndefined();
+      });
+    });
+
+    describe('function definition with source reference', () => {
+      it('parses function with source reference', () => {
+        const input = 'fn process(data) -> result: {{src:src/main.ts:10-25}}';
+        const nodes = parseFunctions(input);
+
+        expect(nodes).toHaveLength(1);
+        expect(nodes[0]?.sourceRef).toEqual({
+          file: 'src/main.ts',
+          startLine: 10,
+          endLine: 25,
+        });
+      });
+
+      it('parses function without source reference', () => {
+        const input = 'fn process(data) -> result:';
+        const nodes = parseFunctions(input);
+
+        expect(nodes).toHaveLength(1);
+        expect(nodes[0]?.sourceRef).toBeUndefined();
+      });
+    });
+
+    describe('internal calls with source reference', () => {
+      it('parses call with source reference', () => {
+        const input = `fn process() -> result:
+  validate() {{src:src/validate.ts:5-10}}`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/validate.ts',
+          startLine: 5,
+          endLine: 10,
+        });
+      });
+
+      it('parses multiple calls with source references', () => {
+        const input = `fn process() -> result:
+  validate() {{src:src/validate.ts:5-10}}
+  transform() {{src:src/transform.ts:15-25}}`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/validate.ts',
+          startLine: 5,
+          endLine: 10,
+        });
+        expect(nodes[0]?.children?.[1]?.sourceRef).toEqual({
+          file: 'src/transform.ts',
+          startLine: 15,
+          endLine: 25,
+        });
+      });
+    });
+
+    describe('external calls with source reference', () => {
+      it('parses external call with source reference', () => {
+        const input = `fn process() -> result:
+  @db_query() {{src:src/db.ts:100-120}}`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/db.ts',
+          startLine: 100,
+          endLine: 120,
+        });
+      });
+    });
+
+    describe('blocks with source reference', () => {
+      it('parses block label with source reference', () => {
+        const input = `fn process() -> result:
+  validation: {{src:src/main.ts:10-30}}
+    check()`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.type).toBe(NodeType.block);
+        expect(nodes[0]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/main.ts',
+          startLine: 10,
+          endLine: 30,
+        });
+      });
+    });
+
+    describe('return statements with source reference', () => {
+      it('parses return with source reference', () => {
+        const input = `fn process() -> result:
+  -> value {{src:src/main.ts:50-50}}`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/main.ts',
+          startLine: 50,
+          endLine: 50,
+        });
+      });
+
+      it('parses return without value but with source reference', () => {
+        const input = `fn process() -> result:
+  -> {{src:src/main.ts:50}}`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/main.ts',
+          startLine: 50,
+          endLine: 50,
+        });
+      });
+    });
+
+    describe('early exits with source reference', () => {
+      it('parses early exit with source reference', () => {
+        const input = `fn process() -> result:
+  *-> error {{src:src/main.ts:25-26}}`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/main.ts',
+          startLine: 25,
+          endLine: 26,
+        });
+      });
+    });
+
+    describe('error handlers with source reference', () => {
+      it('parses error handler with source reference', () => {
+        const input = `fn process() -> result:
+  on error: {{src:src/main.ts:40-50}}
+    log()`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/main.ts',
+          startLine: 40,
+          endLine: 50,
+        });
+      });
+    });
+
+    describe('mixed source references', () => {
+      it('parses complex structure with multiple source references', () => {
+        const input = `fn process_order(data) -> order | errors: {{src:src/order.ts:1-100}}
+  validate: {{src:src/order.ts:5-25}}
+    check_format() {{src:src/order.ts:6-10}}
+    @validate_with_api() {{src:src/order.ts:11-20}}
+      *-> errors {{src:src/order.ts:15-16}}
+  transform() {{src:src/order.ts:30-40}}
+  on error: {{src:src/order.ts:45-55}}
+    log() {{src:src/order.ts:46-48}}
+    *-> errors {{src:src/order.ts:50-52}}
+  -> order {{src:src/order.ts:60-60}}`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes).toHaveLength(1);
+        const fn = nodes[0];
+
+        // Function source ref
+        expect(fn?.sourceRef).toEqual({
+          file: 'src/order.ts',
+          startLine: 1,
+          endLine: 100,
+        });
+
+        // Validate block
+        const validate = fn?.children?.[0];
+        expect(validate?.sourceRef).toEqual({
+          file: 'src/order.ts',
+          startLine: 5,
+          endLine: 25,
+        });
+
+        // check_format call
+        expect(validate?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/order.ts',
+          startLine: 6,
+          endLine: 10,
+        });
+
+        // validate_with_api external call
+        expect(validate?.children?.[1]?.sourceRef).toEqual({
+          file: 'src/order.ts',
+          startLine: 11,
+          endLine: 20,
+        });
+
+        // Early exit in external call
+        expect(validate?.children?.[1]?.children?.[0]?.sourceRef).toEqual({
+          file: 'src/order.ts',
+          startLine: 15,
+          endLine: 16,
+        });
+
+        // transform call
+        expect(fn?.children?.[1]?.sourceRef).toEqual({
+          file: 'src/order.ts',
+          startLine: 30,
+          endLine: 40,
+        });
+
+        // error handler
+        const errorHandler = fn?.children?.[2];
+        expect(errorHandler?.sourceRef).toEqual({
+          file: 'src/order.ts',
+          startLine: 45,
+          endLine: 55,
+        });
+
+        // Return
+        expect(fn?.children?.[3]?.sourceRef).toEqual({
+          file: 'src/order.ts',
+          startLine: 60,
+          endLine: 60,
+        });
+      });
+
+      it('handles missing source references gracefully in mixed content', () => {
+        const input = `fn process() -> result:
+  validate() {{src:src/validate.ts:5-10}}
+  transform()
+  -> result {{src:src/main.ts:50}}`;
+        const nodes = parseFunctions(input);
+
+        expect(nodes[0]?.children?.[0]?.sourceRef).toBeDefined();
+        expect(nodes[0]?.children?.[1]?.sourceRef).toBeUndefined();
+        expect(nodes[0]?.children?.[2]?.sourceRef).toBeDefined();
+      });
     });
   });
 });

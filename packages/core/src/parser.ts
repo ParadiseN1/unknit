@@ -4,7 +4,7 @@
  */
 
 import { Tokenizer, Token, TokenType } from './tokenizer.js';
-import { UnknitNode, NodeType } from './types.js';
+import { UnknitNode, NodeType, SourceRef } from './types.js';
 
 /**
  * Error during parsing.
@@ -65,7 +65,7 @@ export class Parser {
 
   /**
    * Parse a function definition.
-   * Syntax: fn name(params) -> return_type | error_type:
+   * Syntax: fn name(params) -> return_type | error_type: {{src:file:line-line}}
    */
   private parseFunctionDefinition(): UnknitNode {
     // Consume 'fn' keyword
@@ -90,6 +90,9 @@ export class Parser {
     // Consume the colon
     this.consume(TokenType.COLON, "Expected ':' after return type");
 
+    // Try to capture source reference if present
+    const sourceRef = this.tryConsumeSourceRef();
+
     // Create the function node
     const node: UnknitNode = {
       type: NodeType.fn,
@@ -97,10 +100,11 @@ export class Parser {
       params: params.length > 0 ? params : undefined,
       returnType,
       errorType,
+      sourceRef,
       children: [],
     };
 
-    // Parse function body
+    // Parse function body (skip any remaining content on this line)
     node.children = this.parseFunctionBody();
 
     return node;
@@ -278,8 +282,8 @@ export class Parser {
 
   /**
    * Parse an internal call or a block label.
-   * Internal call: name()
-   * Block label: name: (followed by indented children)
+   * Internal call: name() {{src:file:line-line}}
+   * Block label: name: {{src:file:line-line}} (followed by indented children)
    */
   private parseCallOrBlock(): UnknitNode {
     const nameToken = this.advance();
@@ -290,9 +294,13 @@ export class Parser {
       this.advance(); // consume (
       this.consume(TokenType.RPAREN, "Expected ')' after call");
 
+      // Try to capture source reference
+      const sourceRef = this.tryConsumeSourceRef();
+
       const node: UnknitNode = {
         type: NodeType.call,
         name,
+        sourceRef,
         children: [],
       };
 
@@ -306,9 +314,13 @@ export class Parser {
     if (this.check(TokenType.COLON)) {
       this.advance(); // consume :
 
+      // Try to capture source reference
+      const sourceRef = this.tryConsumeSourceRef();
+
       const node: UnknitNode = {
         type: NodeType.block,
         name,
+        sourceRef,
         children: [],
       };
 
@@ -319,9 +331,13 @@ export class Parser {
     }
 
     // Just an identifier without () or : - treat as a block
+    // Try to capture source reference
+    const sourceRef = this.tryConsumeSourceRef();
+
     const node: UnknitNode = {
       type: NodeType.block,
       name,
+      sourceRef,
       children: [],
     };
 
@@ -331,7 +347,7 @@ export class Parser {
   }
 
   /**
-   * Parse an external call: @name()
+   * Parse an external call: @name() {{src:file:line-line}}
    */
   private parseExternalCall(): UnknitNode {
     this.advance(); // consume @
@@ -345,9 +361,13 @@ export class Parser {
     this.consume(TokenType.LPAREN, "Expected '(' after external function name");
     this.consume(TokenType.RPAREN, "Expected ')' after external call");
 
+    // Try to capture source reference
+    const sourceRef = this.tryConsumeSourceRef();
+
     const node: UnknitNode = {
       type: NodeType.external_call,
       name,
+      sourceRef,
       children: [],
     };
 
@@ -358,7 +378,7 @@ export class Parser {
   }
 
   /**
-   * Parse an early exit: *-> value
+   * Parse an early exit: *-> value {{src:file:line-line}}
    */
   private parseEarlyExit(): UnknitNode {
     this.advance(); // consume *->
@@ -369,9 +389,13 @@ export class Parser {
       name = this.advance().value;
     }
 
+    // Try to capture source reference
+    const sourceRef = this.tryConsumeSourceRef();
+
     const node: UnknitNode = {
       type: NodeType.early_exit,
       name,
+      sourceRef,
       children: [],
     };
 
@@ -382,7 +406,7 @@ export class Parser {
   }
 
   /**
-   * Parse a return: -> value
+   * Parse a return: -> value {{src:file:line-line}}
    */
   private parseReturn(): UnknitNode {
     this.advance(); // consume ->
@@ -393,9 +417,13 @@ export class Parser {
       name = this.advance().value;
     }
 
+    // Try to capture source reference
+    const sourceRef = this.tryConsumeSourceRef();
+
     const node: UnknitNode = {
       type: NodeType.return,
       name,
+      sourceRef,
       children: [],
     };
 
@@ -406,7 +434,7 @@ export class Parser {
   }
 
   /**
-   * Parse an error handler: on error:
+   * Parse an error handler: on error: {{src:file:line-line}}
    */
   private parseErrorHandler(): UnknitNode {
     this.advance(); // consume 'on'
@@ -420,9 +448,13 @@ export class Parser {
 
     this.consume(TokenType.COLON, "Expected ':' after error type");
 
+    // Try to capture source reference
+    const sourceRef = this.tryConsumeSourceRef();
+
     const node: UnknitNode = {
       type: NodeType.error_handler,
       name,
+      sourceRef,
       children: [],
     };
 
@@ -483,6 +515,18 @@ export class Parser {
     }
 
     return children;
+  }
+
+  /**
+   * Try to consume a source reference token and parse it.
+   * Returns the SourceRef if present, undefined otherwise.
+   */
+  private tryConsumeSourceRef(): SourceRef | undefined {
+    if (this.check(TokenType.SOURCE_REF)) {
+      const token = this.advance();
+      return parseSourceRef(token.value);
+    }
+    return undefined;
   }
 
   /**
@@ -568,4 +612,55 @@ export class Parser {
 export function parseFunctions(input: string): UnknitNode[] {
   const parser = new Parser(input);
   return parser.parse();
+}
+
+/**
+ * Parse a source reference token value into a SourceRef object.
+ * Format: {{src:file:line-line}} or {{src:file:line}}
+ * Returns undefined if the format is invalid.
+ */
+export function parseSourceRef(tokenValue: string): SourceRef | undefined {
+  // Extract content between {{ and }}
+  const match = tokenValue.match(/^\{\{src:(.+)\}\}$/);
+  if (!match) {
+    return undefined;
+  }
+
+  const content = match[1];
+  if (!content) {
+    return undefined;
+  }
+
+  // Find the last colon to separate file from line range
+  // This handles file paths with colons (e.g., C:\path\file.ts)
+  const lastColonIndex = content.lastIndexOf(':');
+  if (lastColonIndex === -1) {
+    return undefined;
+  }
+
+  const file = content.substring(0, lastColonIndex);
+  const lineRange = content.substring(lastColonIndex + 1);
+
+  if (!file || !lineRange) {
+    return undefined;
+  }
+
+  // Parse line range: either "line" or "line-line"
+  const lineMatch = lineRange.match(/^(\d+)(?:-(\d+))?$/);
+  if (!lineMatch) {
+    return undefined;
+  }
+
+  const startLine = parseInt(lineMatch[1]!, 10);
+  const endLine = lineMatch[2] ? parseInt(lineMatch[2], 10) : startLine;
+
+  if (isNaN(startLine) || isNaN(endLine)) {
+    return undefined;
+  }
+
+  return {
+    file,
+    startLine,
+    endLine,
+  };
 }

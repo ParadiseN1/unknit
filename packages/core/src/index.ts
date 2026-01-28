@@ -23,4 +23,4 @@ export {
 } from './tokenizer.js';
 
 // Export parser
-export { Parser, ParseError, parseFunctions } from './parser.js';
+export { Parser, ParseError, parseFunctions, parseSourceRef } from './parser.js';
