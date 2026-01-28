@@ -15,7 +15,8 @@
   "activationEvents": [
     "onLanguage:unknit",
     "onCommand:unknit.goToBlock",
-    "onCommand:unknit.generate"
+    "onCommand:unknit.generate",
+    "onCommand:unknit.validate"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -39,6 +40,10 @@
       {
         "command": "unknit.generate",
         "title": "Unknit: Generate"
+      },
+      {
+        "command": "unknit.validate",
+        "title": "Unknit: Validate"
       }
     ],
     "customEditors": [
@@ -64,6 +69,11 @@
           "command": "unknit.generate",
           "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact",
           "group": "navigation"
+        },
+        {
+          "command": "unknit.validate",
+          "when": "resourceLangId == unknit",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
@@ -74,6 +84,10 @@
         {
           "command": "unknit.generate",
           "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
+        },
+        {
+          "command": "unknit.validate",
+          "when": "resourceLangId == unknit"
         }
       ]
     },
