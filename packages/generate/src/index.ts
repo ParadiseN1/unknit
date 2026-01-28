@@ -28,6 +28,23 @@ export {
   loadConfigWithAutoDetection,
 } from './package-detector.js';
 
+// Python source reader exports
+export {
+  type PythonReaderOptions,
+  PythonReader,
+  readPythonSource,
+  parsePythonSource,
+  extractFunctionBoundaries,
+  extractImportStatements,
+  matchFunctionDefinition,
+  parseParameters,
+  getIndentation,
+  isBlankOrComment,
+  parseImportLine,
+  classifyImport,
+  createPythonReaderOptions,
+} from './python-reader.js';
+
 /**
  * Metadata extracted from source code for LLM context
  */
