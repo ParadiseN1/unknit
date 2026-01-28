@@ -66,6 +66,22 @@ export {
   getLanguageFromPath,
 } from './typescript-reader.js';
 
+// LLM prompt builder exports
+export {
+  type PromptBuilderOptions,
+  type BuiltPrompts,
+  UNKNIT_SPEC_CONDENSED,
+  GENERATION_RULES,
+  FEW_SHOT_EXAMPLES,
+  SOURCE_REF_INSTRUCTIONS,
+  PromptBuilder,
+  buildSystemPrompt,
+  buildUserPrompt,
+  buildPrompts,
+  formatFunctionBoundaries,
+  formatImportStatements,
+} from './prompt-builder.js';
+
 /**
  * Metadata extracted from source code for LLM context
  */
