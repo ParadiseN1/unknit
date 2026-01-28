@@ -13,7 +13,8 @@
     "Visualization"
   ],
   "activationEvents": [
-    "onLanguage:unknit"
+    "onLanguage:unknit",
+    "onCommand:unknit.goToBlock"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -29,6 +30,12 @@
         ]
       }
     ],
+    "commands": [
+      {
+        "command": "unknit.goToBlock",
+        "title": "Unknit: Go to Block"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "unknit.editor",
@@ -40,7 +47,22 @@
         ],
         "priority": "default"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "unknit.goToBlock",
+          "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "unknit.goToBlock",
+          "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "node esbuild.config.js",

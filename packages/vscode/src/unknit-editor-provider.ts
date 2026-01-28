@@ -8,6 +8,7 @@ import {
   type ParseResult,
   type SourceRef,
 } from '@unknit/core';
+import { getAndClearGoToBlockTarget } from './go-to-block-command';
 
 // Counter for generating unique node IDs
 let nodeIdCounter = 0;
@@ -102,14 +103,31 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
 
   /**
    * Updates the webview content with the current document state.
-   * This is a placeholder that will be fully implemented in US-025.
+   * Also checks for pending go-to-block targets and scrolls to them.
    */
   private updateWebview(
     webview: vscode.Webview,
     document: vscode.TextDocument
   ): void {
     webview.html = this.getHtmlForWebview(webview, document);
+
+    // Check for pending go-to-block target
+    const target = getAndClearGoToBlockTarget(document.uri.fsPath);
+    if (target) {
+      // Store the target for when the webview signals it's ready
+      this.pendingScrollTarget = target;
+    }
   }
+
+  /**
+   * Pending scroll target from go-to-block command.
+   */
+  private pendingScrollTarget?: {
+    targetBlock: string;
+    targetLine: number;
+    sourceFile: string;
+    nodeIndex: number;
+  };
 
   /**
    * Generates the HTML content for the webview.
@@ -372,10 +390,36 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
               case 'sourceCodeError':
                 displaySourceError(message);
                 break;
+              case 'scrollToBlock':
+                scrollToBlock(message);
+                break;
               default:
                 console.log('Received message:', message);
             }
           });
+
+          // Scroll to a specific block by node index
+          function scrollToBlock(message) {
+            const nodeId = 'node-' + message.nodeIndex;
+            const chevron = document.querySelector('[data-node-id="' + nodeId + '"]');
+            if (chevron) {
+              // Find the parent expandable element
+              const expandable = chevron.closest('.unknit-expandable');
+              if (expandable) {
+                // Scroll into view with some padding
+                expandable.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Add a brief highlight effect
+                expandable.classList.add('unknit-highlight');
+                setTimeout(() => {
+                  expandable.classList.remove('unknit-highlight');
+                }, 2000);
+              }
+            }
+          }
+
+          // Signal that the webview is ready
+          vscode.postMessage({ type: 'ready' });
 
           // Display source code in the appropriate container
           function displaySourceCode(message) {
@@ -651,6 +695,15 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
       .unknit-context-menu-item:hover {
         background-color: var(--vscode-menu-selectionBackground, #094771);
         color: var(--vscode-menu-selectionForeground, #ffffff);
+      }
+      .unknit-highlight {
+        background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 234, 0, 0.4));
+        border-radius: 4px;
+        animation: unknit-highlight-fade 2s ease-out;
+      }
+      @keyframes unknit-highlight-fade {
+        0% { background-color: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 234, 0, 0.4)); }
+        100% { background-color: transparent; }
       }
     `;
   }
@@ -963,7 +1016,7 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
   ): void {
     switch (message.type) {
       case 'ready':
-        console.log('Webview is ready');
+        this.handleWebviewReady(webview);
         break;
       case 'toggleExpand':
         this.handleToggleExpand(message, webview);
@@ -973,6 +1026,23 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
         break;
       default:
         console.log('Unknown message type:', message.type);
+    }
+  }
+
+  /**
+   * Handles the webview ready event.
+   * Sends any pending scroll target to the webview.
+   */
+  private handleWebviewReady(webview: vscode.Webview): void {
+    if (this.pendingScrollTarget) {
+      webview.postMessage({
+        type: 'scrollToBlock',
+        nodeIndex: this.pendingScrollTarget.nodeIndex,
+        targetBlock: this.pendingScrollTarget.targetBlock,
+        sourceFile: this.pendingScrollTarget.sourceFile,
+        targetLine: this.pendingScrollTarget.targetLine,
+      });
+      this.pendingScrollTarget = undefined;
     }
   }
 
