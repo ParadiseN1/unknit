@@ -63,6 +63,9 @@ importers:
       '@unknit/core':
         specifier: workspace:*
         version: link:../core
+      '@unknit/generate':
+        specifier: workspace:*
+        version: link:../generate
     devDependencies:
       '@types/vscode':
         specifier: ^1.85.0

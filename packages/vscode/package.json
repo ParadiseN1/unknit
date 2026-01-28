@@ -14,7 +14,8 @@
   ],
   "activationEvents": [
     "onLanguage:unknit",
-    "onCommand:unknit.goToBlock"
+    "onCommand:unknit.goToBlock",
+    "onCommand:unknit.generate"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -34,6 +35,10 @@
       {
         "command": "unknit.goToBlock",
         "title": "Unknit: Go to Block"
+      },
+      {
+        "command": "unknit.generate",
+        "title": "Unknit: Generate"
       }
     ],
     "customEditors": [
@@ -54,14 +59,34 @@
           "command": "unknit.goToBlock",
           "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact",
           "group": "navigation"
+        },
+        {
+          "command": "unknit.generate",
+          "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
         {
           "command": "unknit.goToBlock",
           "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
+        },
+        {
+          "command": "unknit.generate",
+          "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
         }
       ]
+    },
+    "configuration": {
+      "title": "Unknit",
+      "properties": {
+        "unknit.anthropicApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Anthropic API key for generating unknit files. Can also be set via the ANTHROPIC_API_KEY environment variable.",
+          "scope": "machine"
+        }
+      }
     }
   },
   "scripts": {
@@ -73,7 +98,8 @@
     "package": "vsce package"
   },
   "dependencies": {
-    "@unknit/core": "workspace:*"
+    "@unknit/core": "workspace:*",
+    "@unknit/generate": "workspace:*"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

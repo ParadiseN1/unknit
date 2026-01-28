@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { UnknitEditorProvider } from './unknit-editor-provider';
 import { registerGoToBlockCommand } from './go-to-block-command';
+import { registerGenerateCommand } from './generate-command';
 
 /**
  * Called when the extension is activated.
@@ -14,6 +15,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register the "Unknit: Go to Block" command
   context.subscriptions.push(registerGoToBlockCommand(context));
+
+  // Register the "Unknit: Generate" command
+  context.subscriptions.push(registerGenerateCommand(context));
 }
 
 /**
