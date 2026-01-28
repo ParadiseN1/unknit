@@ -755,3 +755,35 @@
   - Custom context menus in webviews require manual DOM creation and event handling
   - VS Code menu theme variables: --vscode-menu-background, --vscode-menu-foreground, --vscode-menu-selectionBackground
 ---
+
+## 2026-01-28 - US-029
+- **What was implemented**: Go to Unknit navigation from source code to unknit block
+- **Files created**:
+  - `packages/vscode/src/go-to-block-command.ts` - Command handler for navigating to unknit blocks
+- **Files changed**:
+  - `packages/vscode/package.json` - Added command registration, menu entries, activation events
+  - `packages/vscode/src/extension.ts` - Registered the goToBlock command
+  - `packages/vscode/src/unknit-editor-provider.ts` - Added scroll target handling and highlight effect
+- **Features implemented**:
+  - `unknit.goToBlock` command registered in package.json
+  - Command available in editor context menu and command palette for Python/TS/JS files
+  - `goToBlockCommand()` finds corresponding .unknit file for source file
+  - Uses `SourceBlockMapper` from @unknit/core to find block covering current line
+  - Opens .unknit file using custom editor (`vscode.openWith`)
+  - Webview receives scroll target and scrolls to the block
+  - Highlight animation on target block for visibility (2s fade-out)
+  - `findBlockIndex()` calculates node index for webview scrolling
+  - Communication via `setGoToBlockTarget()`/`getAndClearGoToBlockTarget()` pattern
+- **Key implementation patterns**:
+  - Uses module-level Map to pass scroll target between command and editor provider
+  - Webview sends 'ready' message on load, provider responds with scroll target
+  - Block index calculated via depth-first traversal to match render order
+  - Source file path tried as: relative path, filename only, absolute path
+  - CSS highlight animation with `unknit-highlight-fade` keyframes
+- **Learnings for future iterations:**
+  - Webview-to-extension communication is async - need a "ready" handshake for post-load messages
+  - Module-level storage works for passing data between different VS Code components
+  - `scrollIntoView({ behavior: 'smooth', block: 'center' })` provides good UX
+  - Highlight animation with CSS keyframes is cleaner than JS-based timeouts
+  - Finding .unknit counterpart uses convention: `<filename>.unknit` in same directory
+---
