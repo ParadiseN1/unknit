@@ -430,7 +430,7 @@
         "Verify in VS Code Extension Development Host"
       ],
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

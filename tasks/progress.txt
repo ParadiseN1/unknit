@@ -669,3 +669,31 @@
   - Use HTML entities (&gt; &lt;) for operators in HTML content
   - Unused parameters should use underscore prefix (_depth) to avoid TypeScript errors
 ---
+
+## 2026-01-28 - US-026
+- **What was implemented**: Block expand/collapse UI for the custom editor
+- **Files changed**:
+  - `packages/vscode/src/unknit-editor-provider.ts` - Added expand/collapse functionality
+- **Features implemented**:
+  - Clickable chevron icons (▶) on all expandable nodes (functions, calls, blocks, etc.)
+  - Chevron rotates 90° when expanded (uses CSS transform)
+  - Hidden placeholder chevron for nodes without children to maintain alignment
+  - Collapsed state hides children elements (`display: none`)
+  - Collapsed/expanded state persists across re-renders using VS Code webview state API
+  - Click handler sends `toggleExpand` message to extension host with nodeId and expanded state
+  - State restoration from saved state on webview initialization
+- **Key implementation patterns**:
+  - `generateNodeId()` creates unique IDs for each node during render
+  - `nodeIdCounter` reset at start of each `renderParseResult()` for consistent IDs
+  - `renderChevron(nodeId, hasChildren)` renders chevron or hidden placeholder
+  - `renderChildren(children, nodeId)` wraps children with expand/collapse support
+  - Data attributes `data-node-id` and `data-children-for` link chevrons to their children
+  - `vscode.getState()`/`vscode.setState()` for persisting collapsed nodes between renders
+  - CSS classes `.collapsed`/`.expanded` control visibility and icon rotation
+- **Learnings for future iterations:**
+  - Use `!!` to convert truthy/falsy array check to boolean for TypeScript
+  - CSS transform rotation on the same element (▶) is simpler than swapping icons (▶/▼)
+  - `event.target.closest('.class')` is reliable for delegated click handling
+  - VS Code webview state API preserves state across panel hide/show but not across reloads
+  - Hidden placeholder chevrons maintain consistent alignment for leaf nodes
+---
