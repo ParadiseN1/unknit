@@ -51,3 +51,11 @@ export {
   type ValidationResult,
   type CoverageExpectedRange,
 } from './validator.js';
+
+// Export source-to-block mapper
+export {
+  SourceBlockMapper,
+  getBlockForLine,
+  getLinesForBlock,
+  getBlockPath,
+} from './mapper.js';
