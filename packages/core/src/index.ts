@@ -69,3 +69,13 @@ export {
   type LineShift,
   type UpdateResult,
 } from './updater.js';
+
+// Export structural change detector
+export {
+  StructuralChangeDetector,
+  detectStructuralChanges,
+  StructuralChangeType,
+  type FunctionSignature,
+  type StructuralChange,
+  type StructuralChangeResult,
+} from './structural-detector.js';
