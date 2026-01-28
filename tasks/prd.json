@@ -381,7 +381,7 @@
         "Typecheck passes"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -397,7 +397,7 @@
         "Verify in VS Code Extension Development Host"
       ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

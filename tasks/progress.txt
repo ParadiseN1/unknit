@@ -10,6 +10,9 @@
 - Use `??` for default values when accessing array indices to satisfy strict TypeScript
 - Avoid `while(true)` loops - use explicit condition to avoid ESLint `no-constant-condition`
 - Export classes with `export class` and helper functions with `export function`
+- VS Code extensions use CommonJS output (module: "CommonJS" in tsconfig) and esbuild for bundling
+- VS Code extension names use unscoped format (e.g., `unknit-vscode` not `@unknit/vscode`)
+- VS Code CustomTextEditorProvider requires viewType matching package.json contributes.customEditors
 
 ---
 
@@ -584,4 +587,53 @@
   - When index.ts re-exports from a module that imports from index.ts, it creates circular dependency issues
   - ESM module mocking in vitest is complex - `vi.mock` with factory functions works better than dynamic `vi.doMock`
   - For testing modules with external dependencies like LLM clients, consider dependency injection or simpler unit tests
+---
+
+## 2026-01-28 - US-023
+- **What was implemented**: VS Code extension package structure
+- **Files created**:
+  - `packages/vscode/package.json` - VS Code extension manifest with activationEvents for .unknit files
+  - `packages/vscode/tsconfig.json` - TypeScript config extending base config with CommonJS output
+  - `packages/vscode/src/extension.ts` - Extension entry point with activate/deactivate stubs
+  - `packages/vscode/esbuild.config.js` - esbuild configuration for extension bundling
+- **Files changed**:
+  - `pnpm-lock.yaml` - Updated with vscode package dependencies
+- **Key features**:
+  - Extension activates on .unknit language files
+  - Custom editor registered for .unknit files (viewType: unknit.editor)
+  - Language contribution for .unknit file extension
+  - esbuild bundles extension.ts to dist/extension.js
+  - Uses CommonJS module format (required for VS Code extensions)
+- **Learnings for future iterations:**
+  - VS Code extensions require CommonJS output, not ESM (`module: "CommonJS"` in tsconfig)
+  - VS Code extension names typically use unscoped format (e.g., `unknit-vscode` not `@unknit/vscode`)
+  - `@types/vscode` provides type definitions, `vscode` module is external at runtime
+  - esbuild config should mark `vscode` as external since it's provided by VS Code runtime
+  - Custom editors use `contributes.customEditors` in package.json with viewType and selector
+---
+
+## 2026-01-28 - US-024
+- **What was implemented**: Custom editor provider registration for .unknit files
+- **Files created**:
+  - `packages/vscode/src/unknit-editor-provider.ts` - CustomTextEditorProvider implementation
+- **Files changed**:
+  - `packages/vscode/src/extension.ts` - Registered the provider in activate()
+- **Features implemented**:
+  - `UnknitEditorProvider` class implementing `vscode.CustomTextEditorProvider`
+  - `UnknitEditorProvider.register(context)` static method for easy registration
+  - `resolveCustomTextEditor()` sets up webview with placeholder HTML
+  - Document change listener updates webview when .unknit file changes
+  - Message passing infrastructure between webview and extension host
+  - CSP-compliant webview with nonce generation for security
+  - `escapeHtml()` utility to prevent XSS in webview content
+- **Key implementation patterns**:
+  - Static `viewType` matches package.json `contributes.customEditors.viewType`
+  - `retainContextWhenHidden: true` preserves webview state when not visible
+  - Use `webview.cspSource` in Content-Security-Policy for proper resource loading
+  - Dispose document change subscription when panel closes
+- **Learnings for future iterations:**
+  - CustomTextEditorProvider.resolveCustomTextEditor receives TextDocument, not raw file content
+  - Use `acquireVsCodeApi()` in webview script to communicate with extension host
+  - Always include nonce in CSP for script and style tags
+  - Document.uri.toString() comparison needed for matching document change events
 ---
