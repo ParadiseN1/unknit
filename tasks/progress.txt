@@ -637,3 +637,35 @@
   - Always include nonce in CSP for script and style tags
   - Document.uri.toString() comparison needed for matching document change events
 ---
+
+## 2026-01-28 - US-025
+- **What was implemented**: Custom editor HTML rendering for .unknit files
+- **Files changed**:
+  - `packages/vscode/src/unknit-editor-provider.ts` - Added HTML rendering with syntax highlighting
+- **Features implemented**:
+  - Parses .unknit file content using `parseFunctionsWithRecovery()` from @unknit/core
+  - Renders AST nodes as styled HTML blocks with proper indentation
+  - CSS syntax highlighting for all node types:
+    - `fn` keyword in purple (--vscode-symbolIcon-keywordForeground)
+    - Function names in yellow (--vscode-symbolIcon-functionForeground)
+    - Parameters in blue (--vscode-symbolIcon-variableForeground)
+    - Return types in teal (--vscode-symbolIcon-typeForeground)
+    - Error types in red (--vscode-errorForeground)
+    - External calls with @ prefix in blue (--vscode-symbolIcon-referenceForeground)
+    - Early exits in yellow/warning color (--vscode-warningForeground)
+    - Error handlers in red (--vscode-errorForeground)
+  - Hides {{src:...}} metadata from display (not rendered in HTML)
+  - Shows parse errors with line/column location when parsing fails
+  - Webview syncs when document changes (already implemented in US-024)
+- **Key implementation patterns**:
+  - `getStyles()` method returns all CSS as a string for embedding in HTML
+  - `renderParseResult()` handles both nodes and errors rendering
+  - `renderNode()` dispatches to type-specific render methods
+  - Each node type has its own render method (renderFunctionNode, renderCallNode, etc.)
+  - Children are rendered recursively with CSS-based indentation using border-left
+- **Learnings for future iterations:**
+  - VS Code CSS variables like --vscode-symbolIcon-* integrate with theme colors
+  - Fallback colors needed for variables not available in all themes
+  - Use HTML entities (&gt; &lt;) for operators in HTML content
+  - Unused parameters should use underscore prefix (_depth) to avoid TypeScript errors
+---
