@@ -38,3 +38,13 @@ export {
   serialize,
   serializeSourceRef,
 } from './serializer.js';
+
+// Export validator
+export {
+  SourceFileValidator,
+  validateSourceRef,
+  validateNode,
+  validateNodes,
+  type ValidatorOptions,
+  type ValidationResult,
+} from './validator.js';
