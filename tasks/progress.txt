@@ -913,3 +913,35 @@
   - Use `void` to explicitly ignore the Promise return from async validation calls in loops
   - Event handlers registered on extension activation work for the entire VS Code session
 ---
+
+## 2026-01-28 - US-034
+- **What was implemented**: Source file watcher for auto-updating .unknit files when source changes
+- **Files created**:
+  - `packages/vscode/src/file-watcher.ts` - FileSystemWatcher implementation
+- **Files changed**:
+  - `packages/vscode/src/extension.ts` - Added import and registration of file watcher
+- **Features implemented**:
+  - `registerFileWatcher()` creates and registers FileSystemWatchers for Python, TypeScript, and JavaScript files
+  - Separate watchers for .py, .ts/.tsx, and .js/.jsx file patterns
+  - `hasUnknitCounterpart()` checks if source file has a corresponding .unknit file
+  - `syncUnknitFile()` handles the sync operation when source file is saved
+  - Uses SmartUpdater from @unknit/core to update line numbers
+  - Uses detectStructuralChanges from @unknit/core to detect function changes
+  - Shows warning notification with "Regenerate" and "View Details" buttons when structural changes detected
+  - "Regenerate" button opens source file and executes `unknit.generate` command
+  - "View Details" button shows the output channel with detailed change information
+  - Output channel "Unknit File Watcher" logs all file watcher activity
+  - Reuses utility functions from sync-command.ts patterns
+- **Key implementation patterns**:
+  - Uses `vscode.workspace.createFileSystemWatcher()` with glob patterns
+  - `onDidChange` event handler triggers sync when source files are saved
+  - Checks if source file is referenced in the .unknit file before syncing
+  - Composite disposable pattern for cleanup of multiple watchers
+  - After writing updated .unknit file, triggers `workbench.action.files.revert` to refresh open editors
+- **Learnings for future iterations:**
+  - FileSystemWatcher `onDidChange` fires on file save, not on content change in editor
+  - Need separate watchers for different file extensions (glob pattern limitation)
+  - Check if source file is actually referenced in .unknit before processing
+  - Use `vscode.Disposable.from(...disposables)` for composite disposal
+  - For custom editors, document revert may be needed to refresh after external file changes
+---
