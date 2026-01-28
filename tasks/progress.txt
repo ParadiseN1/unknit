@@ -884,3 +884,32 @@
   - Structural change detection is the primary sync feature when snapshots aren't available
   - VS Code WorkspaceEdit with replace() is idiomatic way to update document content
 ---
+
+## 2026-01-28 - US-033
+- **What was implemented**: Automatic validation diagnostics display for .unknit files
+- **Files created**:
+  - `packages/vscode/src/diagnostics-provider.ts` - Registers document event handlers for automatic validation
+- **Files changed**:
+  - `packages/vscode/src/extension.ts` - Added import and registration of diagnostics provider
+- **Features implemented**:
+  - `registerDiagnosticsProvider()` registers event handlers for document lifecycle events
+  - Validation runs automatically on document open via `onDidOpenTextDocument`
+  - Validation runs automatically on document save via `onDidSaveTextDocument`
+  - Diagnostics cleared when document is closed via `onDidCloseTextDocument`
+  - Already-open .unknit documents validated on extension activation
+  - Reuses existing `validateUnknitFile()` and `getDiagnosticsCollection()` from validate-command.ts
+  - Invalid source references display as red underlines (DiagnosticSeverity.Error)
+  - Coverage gaps display as yellow warnings (DiagnosticSeverity.Warning)
+  - All diagnostics appear in VS Code Problems panel
+  - `isUnknitDocument()` helper checks for .unknit file extension and file scheme
+- **Key implementation patterns**:
+  - Uses VS Code workspace event API for document lifecycle events
+  - Event disposables added to `context.subscriptions` for proper cleanup
+  - Checks document URI scheme is 'file' to avoid processing untitled documents
+  - Iterates `vscode.workspace.textDocuments` on activation for already-open files
+- **Learnings for future iterations:**
+  - `vscode.workspace.onDidOpenTextDocument` fires for already-open documents on extension activation
+  - Must check `document.uri.scheme === 'file'` to avoid processing virtual documents
+  - Use `void` to explicitly ignore the Promise return from async validation calls in loops
+  - Event handlers registered on extension activation work for the entire VS Code session
+---
