@@ -5,6 +5,7 @@ import { registerGenerateCommand } from './generate-command';
 import { registerValidateCommand } from './validate-command';
 import { registerSyncCommand } from './sync-command';
 import { registerDiagnosticsProvider } from './diagnostics-provider';
+import { registerFileWatcher } from './file-watcher';
 
 /**
  * Called when the extension is activated.
@@ -30,6 +31,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register diagnostics provider for automatic validation on open/save
   registerDiagnosticsProvider(context);
+
+  // Register file watcher for auto-updating .unknit files when source changes
+  context.subscriptions.push(registerFileWatcher(context));
 }
 
 /**
