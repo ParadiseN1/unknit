@@ -6,6 +6,9 @@ import {
   type ParseResult,
 } from '@unknit/core';
 
+// Counter for generating unique node IDs
+let nodeIdCounter = 0;
+
 /**
  * Custom editor provider for .unknit files.
  * Implements CustomTextEditorProvider to display unknit files
@@ -123,6 +126,73 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
         ${renderedContent}
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
+
+          // Track collapsed state - all nodes start expanded
+          const collapsedNodes = new Set();
+
+          // Initialize from localStorage if available
+          const savedState = vscode.getState();
+          if (savedState && savedState.collapsedNodes) {
+            savedState.collapsedNodes.forEach(id => collapsedNodes.add(id));
+            // Apply saved state to DOM
+            collapsedNodes.forEach(nodeId => {
+              const chevron = document.querySelector('[data-node-id="' + nodeId + '"]');
+              if (chevron) {
+                chevron.classList.remove('expanded');
+                chevron.classList.add('collapsed');
+                const children = document.querySelector('[data-children-for="' + nodeId + '"]');
+                if (children) {
+                  children.classList.remove('expanded');
+                  children.classList.add('collapsed');
+                }
+              }
+            });
+          }
+
+          // Handle chevron clicks for expand/collapse
+          document.addEventListener('click', (event) => {
+            const chevron = event.target.closest('.unknit-chevron');
+            if (!chevron) return;
+
+            const nodeId = chevron.dataset.nodeId;
+            if (!nodeId) return;
+
+            const isCollapsed = chevron.classList.contains('collapsed');
+
+            if (isCollapsed) {
+              // Expand
+              chevron.classList.remove('collapsed');
+              chevron.classList.add('expanded');
+              collapsedNodes.delete(nodeId);
+            } else {
+              // Collapse
+              chevron.classList.remove('expanded');
+              chevron.classList.add('collapsed');
+              collapsedNodes.add(nodeId);
+            }
+
+            // Update children visibility
+            const children = document.querySelector('[data-children-for="' + nodeId + '"]');
+            if (children) {
+              if (isCollapsed) {
+                children.classList.remove('collapsed');
+                children.classList.add('expanded');
+              } else {
+                children.classList.remove('expanded');
+                children.classList.add('collapsed');
+              }
+            }
+
+            // Save state
+            vscode.setState({ collapsedNodes: Array.from(collapsedNodes) });
+
+            // Send message to extension host
+            vscode.postMessage({
+              type: 'toggleExpand',
+              nodeId: nodeId,
+              expanded: isCollapsed
+            });
+          });
 
           // Message passing between webview and extension
           window.addEventListener('message', event => {
@@ -252,6 +322,41 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
         color: var(--vscode-descriptionForeground);
         font-size: 0.9em;
       }
+      .unknit-expandable {
+        cursor: pointer;
+        user-select: none;
+      }
+      .unknit-chevron {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        margin-right: 4px;
+        font-size: 10px;
+        color: var(--vscode-foreground);
+        opacity: 0.7;
+        transition: transform 0.15s ease;
+      }
+      .unknit-chevron:hover {
+        opacity: 1;
+      }
+      .unknit-chevron.collapsed {
+        transform: rotate(0deg);
+      }
+      .unknit-chevron.expanded {
+        transform: rotate(90deg);
+      }
+      .unknit-children.collapsed {
+        display: none;
+      }
+      .unknit-children.expanded {
+        display: block;
+      }
+      .unknit-node-row {
+        display: flex;
+        align-items: baseline;
+      }
     `;
   }
 
@@ -259,6 +364,9 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
    * Renders the parse result (nodes and errors) to HTML.
    */
   private renderParseResult(parseResult: ParseResult): string {
+    // Reset node ID counter for each render
+    nodeIdCounter = 0;
+
     let html = '';
 
     // Show parse errors if any
@@ -280,6 +388,43 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
     }
     html += '</div>';
 
+    return html;
+  }
+
+  /**
+   * Generates a unique node ID for expand/collapse tracking.
+   */
+  private generateNodeId(): string {
+    return `node-${nodeIdCounter++}`;
+  }
+
+  /**
+   * Renders a chevron icon for expandable nodes.
+   */
+  private renderChevron(nodeId: string, hasChildren: boolean): string {
+    if (!hasChildren) {
+      // Placeholder for alignment
+      return '<span class="unknit-chevron" style="visibility: hidden;">▶</span>';
+    }
+    // Right-pointing triangle that rotates 90° when expanded
+    return `<span class="unknit-chevron expanded" data-node-id="${nodeId}">▶</span>`;
+  }
+
+  /**
+   * Renders children with expand/collapse support.
+   */
+  private renderChildren(
+    children: UnknitNode[] | undefined,
+    nodeId: string
+  ): string {
+    if (!children || children.length === 0) {
+      return '';
+    }
+    let html = `<div class="unknit-children expanded" data-children-for="${nodeId}">`;
+    for (const child of children) {
+      html += this.renderNode(child, 1);
+    }
+    html += '</div>';
     return html;
   }
 
@@ -320,8 +465,14 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
    * Renders a function definition node.
    */
   private renderFunctionNode(node: UnknitNode): string {
+    const nodeId = this.generateNodeId();
+    const hasChildren = !!(node.children && node.children.length > 0);
+
     let html = '<div class="unknit-function">';
-    html += '<div class="unknit-function-header">';
+    html += '<div class="unknit-function-header unknit-expandable">';
+
+    // Chevron for expand/collapse
+    html += this.renderChevron(nodeId, hasChildren);
 
     // fn keyword
     html += '<span class="unknit-keyword">fn</span>';
@@ -349,14 +500,8 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
     html += '<span class="unknit-colon">:</span>';
     html += '</div>';
 
-    // Children
-    if (node.children && node.children.length > 0) {
-      html += '<div class="unknit-children">';
-      for (const child of node.children) {
-        html += this.renderNode(child, 1);
-      }
-      html += '</div>';
-    }
+    // Children with expand/collapse support
+    html += this.renderChildren(node.children, nodeId);
 
     html += '</div>';
     return html;
@@ -366,19 +511,17 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
    * Renders an internal call node.
    */
   private renderCallNode(node: UnknitNode): string {
-    let html = '<div class="unknit-node">';
+    const nodeId = this.generateNodeId();
+    const hasChildren = !!(node.children && node.children.length > 0);
+
+    let html = '<div class="unknit-node unknit-node-row unknit-expandable">';
+    html += this.renderChevron(nodeId, hasChildren);
     html += `<span class="unknit-call">${escapeHtml(node.name)}</span>`;
     html += '<span class="unknit-paren">()</span>';
     html += '</div>';
 
-    // Children
-    if (node.children && node.children.length > 0) {
-      html += '<div class="unknit-children">';
-      for (const child of node.children) {
-        html += this.renderNode(child, 1);
-      }
-      html += '</div>';
-    }
+    // Children with expand/collapse support
+    html += this.renderChildren(node.children, nodeId);
 
     return html;
   }
@@ -387,20 +530,18 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
    * Renders an external call node.
    */
   private renderExternalCallNode(node: UnknitNode): string {
-    let html = '<div class="unknit-node">';
+    const nodeId = this.generateNodeId();
+    const hasChildren = !!(node.children && node.children.length > 0);
+
+    let html = '<div class="unknit-node unknit-node-row unknit-expandable">';
+    html += this.renderChevron(nodeId, hasChildren);
     html += '<span class="unknit-external-at">@</span>';
     html += `<span class="unknit-external-call">${escapeHtml(node.name)}</span>`;
     html += '<span class="unknit-paren">()</span>';
     html += '</div>';
 
-    // Children
-    if (node.children && node.children.length > 0) {
-      html += '<div class="unknit-children">';
-      for (const child of node.children) {
-        html += this.renderNode(child, 1);
-      }
-      html += '</div>';
-    }
+    // Children with expand/collapse support
+    html += this.renderChildren(node.children, nodeId);
 
     return html;
   }
@@ -409,19 +550,17 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
    * Renders a block node.
    */
   private renderBlockNode(node: UnknitNode): string {
-    let html = '<div class="unknit-node">';
+    const nodeId = this.generateNodeId();
+    const hasChildren = !!(node.children && node.children.length > 0);
+
+    let html = '<div class="unknit-node unknit-node-row unknit-expandable">';
+    html += this.renderChevron(nodeId, hasChildren);
     html += `<span class="unknit-block">${escapeHtml(node.name)}</span>`;
     html += '<span class="unknit-colon">:</span>';
     html += '</div>';
 
-    // Children
-    if (node.children && node.children.length > 0) {
-      html += '<div class="unknit-children">';
-      for (const child of node.children) {
-        html += this.renderNode(child, 1);
-      }
-      html += '</div>';
-    }
+    // Children with expand/collapse support
+    html += this.renderChildren(node.children, nodeId);
 
     return html;
   }
@@ -430,21 +569,19 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
    * Renders a return node.
    */
   private renderReturnNode(node: UnknitNode): string {
-    let html = '<div class="unknit-node">';
+    const nodeId = this.generateNodeId();
+    const hasChildren = !!(node.children && node.children.length > 0);
+
+    let html = '<div class="unknit-node unknit-node-row unknit-expandable">';
+    html += this.renderChevron(nodeId, hasChildren);
     html += '<span class="unknit-return">-&gt;</span>';
     if (node.name) {
       html += ` <span class="unknit-return">${escapeHtml(node.name)}</span>`;
     }
     html += '</div>';
 
-    // Children (unlikely for return, but for consistency)
-    if (node.children && node.children.length > 0) {
-      html += '<div class="unknit-children">';
-      for (const child of node.children) {
-        html += this.renderNode(child, 1);
-      }
-      html += '</div>';
-    }
+    // Children with expand/collapse support
+    html += this.renderChildren(node.children, nodeId);
 
     return html;
   }
@@ -453,21 +590,19 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
    * Renders an early exit node.
    */
   private renderEarlyExitNode(node: UnknitNode): string {
-    let html = '<div class="unknit-node">';
+    const nodeId = this.generateNodeId();
+    const hasChildren = !!(node.children && node.children.length > 0);
+
+    let html = '<div class="unknit-node unknit-node-row unknit-expandable">';
+    html += this.renderChevron(nodeId, hasChildren);
     html += '<span class="unknit-early-exit">*-&gt;</span>';
     if (node.name) {
       html += ` <span class="unknit-early-exit">${escapeHtml(node.name)}</span>`;
     }
     html += '</div>';
 
-    // Children
-    if (node.children && node.children.length > 0) {
-      html += '<div class="unknit-children">';
-      for (const child of node.children) {
-        html += this.renderNode(child, 1);
-      }
-      html += '</div>';
-    }
+    // Children with expand/collapse support
+    html += this.renderChildren(node.children, nodeId);
 
     return html;
   }
@@ -476,27 +611,24 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
    * Renders an error handler node.
    */
   private renderErrorHandlerNode(node: UnknitNode): string {
-    let html = '<div class="unknit-node">';
+    const nodeId = this.generateNodeId();
+    const hasChildren = !!(node.children && node.children.length > 0);
+
+    let html = '<div class="unknit-node unknit-node-row unknit-expandable">';
+    html += this.renderChevron(nodeId, hasChildren);
     html += '<span class="unknit-error-handler">on </span>';
     html += `<span class="unknit-error-handler">${escapeHtml(node.name)}</span>`;
     html += '<span class="unknit-colon">:</span>';
     html += '</div>';
 
-    // Children
-    if (node.children && node.children.length > 0) {
-      html += '<div class="unknit-children">';
-      for (const child of node.children) {
-        html += this.renderNode(child, 1);
-      }
-      html += '</div>';
-    }
+    // Children with expand/collapse support
+    html += this.renderChildren(node.children, nodeId);
 
     return html;
   }
 
   /**
    * Handles messages received from the webview.
-   * Will be implemented further in US-026 (expand/collapse) and US-028 (navigation).
    */
   private handleWebviewMessage(
     message: WebviewMessage,
@@ -505,6 +637,12 @@ export class UnknitEditorProvider implements vscode.CustomTextEditorProvider {
     switch (message.type) {
       case 'ready':
         console.log('Webview is ready');
+        break;
+      case 'toggleExpand':
+        // Log expand/collapse events for debugging
+        console.log(
+          `Node ${message.nodeId as string} ${message.expanded ? 'expanded' : 'collapsed'}`
+        );
         break;
       default:
         console.log('Unknown message type:', message.type);
