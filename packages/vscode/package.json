@@ -16,7 +16,8 @@
     "onLanguage:unknit",
     "onCommand:unknit.goToBlock",
     "onCommand:unknit.generate",
-    "onCommand:unknit.validate"
+    "onCommand:unknit.validate",
+    "onCommand:unknit.sync"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -44,6 +45,10 @@
       {
         "command": "unknit.validate",
         "title": "Unknit: Validate"
+      },
+      {
+        "command": "unknit.sync",
+        "title": "Unknit: Sync"
       }
     ],
     "customEditors": [
@@ -74,6 +79,11 @@
           "command": "unknit.validate",
           "when": "resourceLangId == unknit",
           "group": "navigation"
+        },
+        {
+          "command": "unknit.sync",
+          "when": "resourceLangId == unknit",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
@@ -87,6 +97,10 @@
         },
         {
           "command": "unknit.validate",
+          "when": "resourceLangId == unknit"
+        },
+        {
+          "command": "unknit.sync",
           "when": "resourceLangId == unknit"
         }
       ]
