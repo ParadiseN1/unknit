@@ -16,6 +16,18 @@ export {
   mergeWithDefaults,
 } from './config.js';
 
+// Package auto-detection exports
+export {
+  type PackageDetectionResult,
+  type MergedPackagesResult,
+  PackageDetector,
+  detectPackages,
+  detectPythonPackages,
+  detectJsPackages,
+  mergePackages,
+  loadConfigWithAutoDetection,
+} from './package-detector.js';
+
 /**
  * Metadata extracted from source code for LLM context
  */
