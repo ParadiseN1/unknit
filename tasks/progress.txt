@@ -787,3 +787,34 @@
   - Highlight animation with CSS keyframes is cleaner than JS-based timeouts
   - Finding .unknit counterpart uses convention: `<filename>.unknit` in same directory
 ---
+
+## 2026-01-28 - US-030
+- **What was implemented**: Unknit Generate command for VS Code extension
+- **Files created**:
+  - `packages/vscode/src/generate-command.ts` - Generate command handler
+- **Files changed**:
+  - `packages/vscode/package.json` - Added command, activation event, menu entries, and configuration
+  - `packages/vscode/src/extension.ts` - Registered the generate command
+  - `pnpm-lock.yaml` - Updated with @unknit/generate dependency
+- **Features implemented**:
+  - `unknit.generate` command registered in package.json
+  - Command available in editor context menu and command palette for Python/TS/JS files
+  - `generateCommand()` calls the @unknit/generate orchestrator
+  - Progress notification using `vscode.window.withProgress()` during LLM generation
+  - Opens generated .unknit file on success using custom editor
+  - Error notification with output channel for detailed error logs
+  - API key from VS Code settings (`unknit.anthropicApiKey`) or `ANTHROPIC_API_KEY` env var
+  - "Open Settings" action when API key is missing
+  - Added `@unknit/generate` as dependency to vscode package
+- **Key implementation patterns**:
+  - `vscode.window.withProgress()` with `ProgressLocation.Notification` for visible progress
+  - `vscode.workspace.getConfiguration('unknit')` for reading settings
+  - `process.env['ANTHROPIC_API_KEY']` fallback for API key
+  - `vscode.commands.executeCommand('vscode.openWith', uri, 'unknit.editor')` to open in custom editor
+  - `vscode.window.createOutputChannel('Unknit')` for detailed error logging
+- **Learnings for future iterations:**
+  - VS Code configuration should use `scope: "machine"` for sensitive settings like API keys
+  - Use `showErrorMessage` with action buttons like "Open Settings" for better UX
+  - Progress notifications should include the file being processed
+  - Output channel with `show(true)` preserves focus on the current editor
+---
