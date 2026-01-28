@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { UnknitEditorProvider } from './unknit-editor-provider';
 
 /**
  * Called when the extension is activated.
@@ -8,8 +9,7 @@ export function activate(context: vscode.ExtensionContext): void {
   console.log('Unknit extension is now active');
 
   // Register the custom editor provider for .unknit files
-  // This will be implemented in US-024
-  void context;
+  context.subscriptions.push(UnknitEditorProvider.register(context));
 }
 
 /**
