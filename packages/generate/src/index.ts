@@ -34,16 +34,37 @@ export {
   PythonReader,
   readPythonSource,
   parsePythonSource,
-  extractFunctionBoundaries,
-  extractImportStatements,
+  extractFunctionBoundaries as extractPythonFunctionBoundaries,
+  extractImportStatements as extractPythonImportStatements,
   matchFunctionDefinition,
-  parseParameters,
+  parseParameters as parsePythonParameters,
   getIndentation,
   isBlankOrComment,
-  parseImportLine,
-  classifyImport,
+  parseImportLine as parsePythonImportLine,
+  classifyImport as classifyPythonImport,
   createPythonReaderOptions,
 } from './python-reader.js';
+
+// TypeScript/JavaScript source reader exports
+export {
+  type TypeScriptReaderOptions,
+  TypeScriptReader,
+  readTypeScriptSource,
+  parseTypeScriptSource,
+  extractFunctionBoundaries as extractTypeScriptFunctionBoundaries,
+  extractImportStatements as extractTypeScriptImportStatements,
+  matchFunctionStart,
+  matchFunctionDeclaration,
+  matchArrowFunction,
+  matchClassMethod,
+  findFunctionEnd,
+  countBraces,
+  parseParameters as parseTypeScriptParameters,
+  parseImportLine as parseTypeScriptImportLine,
+  classifyImport as classifyTypeScriptImport,
+  createTypeScriptReaderOptions,
+  getLanguageFromPath,
+} from './typescript-reader.js';
 
 /**
  * Metadata extracted from source code for LLM context
