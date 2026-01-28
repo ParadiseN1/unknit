@@ -13,7 +13,9 @@ export class ParseError extends Error {
   constructor(
     message: string,
     public readonly line: number,
-    public readonly column: number
+    public readonly column: number,
+    public readonly expected?: string,
+    public readonly found?: string
   ) {
     super(`${message} at line ${line}, column ${column}`);
     this.name = 'ParseError';
@@ -21,22 +23,40 @@ export class ParseError extends Error {
 }
 
 /**
+ * Result of parsing, containing both the AST nodes and any errors encountered.
+ * The parser attempts to recover from errors and continue parsing.
+ */
+export interface ParseResult {
+  /** Successfully parsed function nodes */
+  nodes: UnknitNode[];
+  /** Errors encountered during parsing */
+  errors: ParseError[];
+  /** Whether parsing completed without fatal errors */
+  success: boolean;
+}
+
+/**
  * Parser for Unknit syntax.
  * Implements parsing of function definitions, blocks, and calls (US-005, US-006).
+ * Supports error recovery to collect multiple errors in a single parse.
  */
 export class Parser {
   private tokens: Token[] = [];
   private pos: number = 0;
+  private errors: ParseError[] = [];
 
   constructor(private input: string) {}
 
   /**
    * Parse the input and return an array of function definition nodes.
+   * Throws ParseError on the first error encountered.
+   * For error-tolerant parsing, use parseWithRecovery().
    */
   parse(): UnknitNode[] {
     const tokenizer = new Tokenizer(this.input);
     this.tokens = tokenizer.tokenize();
     this.pos = 0;
+    this.errors = [];
 
     const functions: UnknitNode[] = [];
 
@@ -55,12 +75,139 @@ export class Parser {
         throw new ParseError(
           `Expected 'fn' keyword, found '${token.value}'`,
           token.line,
-          token.column
+          token.column,
+          'fn',
+          token.value
         );
       }
     }
 
     return functions;
+  }
+
+  /**
+   * Parse the input with error recovery, collecting all errors.
+   * Returns both successfully parsed nodes and errors encountered.
+   */
+  parseWithRecovery(): ParseResult {
+    const tokenizer = new Tokenizer(this.input);
+    this.tokens = tokenizer.tokenize();
+    this.pos = 0;
+    this.errors = [];
+
+    const functions: UnknitNode[] = [];
+
+    while (!this.isAtEnd()) {
+      // Skip any leading newlines
+      this.skipNewlines();
+
+      if (this.isAtEnd()) break;
+
+      // Parse function definition
+      if (this.check(TokenType.FN)) {
+        try {
+          const fn = this.parseFunctionDefinitionWithRecovery();
+          if (fn) {
+            functions.push(fn);
+          }
+        } catch (e) {
+          if (e instanceof ParseError) {
+            this.addError(e);
+            this.synchronize();
+          } else {
+            throw e;
+          }
+        }
+      } else {
+        const token = this.peek();
+        this.addError(
+          new ParseError(
+            `Expected 'fn' keyword, found '${token.value}'`,
+            token.line,
+            token.column,
+            'fn',
+            token.value
+          )
+        );
+        this.synchronize();
+      }
+    }
+
+    return {
+      nodes: functions,
+      errors: this.errors,
+      success: this.errors.length === 0,
+    };
+  }
+
+  /**
+   * Add an error to the collection.
+   */
+  private addError(error: ParseError): void {
+    this.errors.push(error);
+  }
+
+  /**
+   * Synchronize parser state after an error by advancing to the next
+   * likely starting point for a new statement or function.
+   */
+  private synchronize(): void {
+    while (!this.isAtEnd()) {
+      // If we've just passed a newline and are at dedent or 'fn', we're likely at a new statement
+      if (this.check(TokenType.FN)) {
+        return;
+      }
+
+      // Skip until we find 'fn' keyword or EOF
+      const token = this.peek();
+      if (token.type === TokenType.NEWLINE) {
+        this.advance();
+        // After newline, check for 'fn' at the start of next line (dedent level 0)
+        this.skipNewlines();
+        if (this.check(TokenType.FN)) {
+          return;
+        }
+        // Also look for DEDENT tokens to return to top level
+        while (this.check(TokenType.DEDENT)) {
+          this.advance();
+          this.skipNewlines();
+          if (this.check(TokenType.FN)) {
+            return;
+          }
+        }
+      } else {
+        this.advance();
+      }
+    }
+  }
+
+  /**
+   * Parse a function definition with error recovery support.
+   */
+  private parseFunctionDefinitionWithRecovery(): UnknitNode | null {
+    try {
+      return this.parseFunctionDefinition();
+    } catch (e) {
+      if (e instanceof ParseError) {
+        this.addError(e);
+        // Skip to end of this function definition
+        this.skipToNextFunction();
+        return null;
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Skip tokens until we reach the next function definition or EOF.
+   */
+  private skipToNextFunction(): void {
+    while (!this.isAtEnd()) {
+      if (this.check(TokenType.FN)) {
+        return;
+      }
+      this.advance();
+    }
   }
 
   /**
@@ -597,21 +744,80 @@ export class Parser {
     }
 
     const token = this.peek();
+    const expectedName = this.tokenTypeName(type);
+    const foundValue = token.value || token.type;
     throw new ParseError(
-      `${message}, found '${token.value}' (${token.type})`,
+      `${message}, found '${foundValue}' (${token.type})`,
       token.line,
-      token.column
+      token.column,
+      expectedName,
+      foundValue
     );
+  }
+
+  /**
+   * Get a human-readable name for a token type.
+   */
+  private tokenTypeName(type: TokenType): string {
+    switch (type) {
+      case TokenType.FN:
+        return 'fn';
+      case TokenType.ON:
+        return 'on';
+      case TokenType.ARROW:
+        return '->';
+      case TokenType.EARLY_EXIT:
+        return '*->';
+      case TokenType.AT:
+        return '@';
+      case TokenType.LPAREN:
+        return '(';
+      case TokenType.RPAREN:
+        return ')';
+      case TokenType.COLON:
+        return ':';
+      case TokenType.PIPE:
+        return '|';
+      case TokenType.COMMA:
+        return ',';
+      case TokenType.QUESTION:
+        return '?';
+      case TokenType.IDENTIFIER:
+        return 'identifier';
+      case TokenType.SOURCE_REF:
+        return 'source reference';
+      case TokenType.NEWLINE:
+        return 'newline';
+      case TokenType.INDENT:
+        return 'indent';
+      case TokenType.DEDENT:
+        return 'dedent';
+      case TokenType.EOF:
+        return 'end of file';
+      default:
+        return type;
+    }
   }
 }
 
 /**
  * Parse function definitions from unknit source.
  * This is a convenience function that creates a parser and parses the input.
+ * Throws ParseError on the first error encountered.
  */
 export function parseFunctions(input: string): UnknitNode[] {
   const parser = new Parser(input);
   return parser.parse();
+}
+
+/**
+ * Parse function definitions with error recovery.
+ * Returns a ParseResult containing successfully parsed nodes and any errors encountered.
+ * The parser attempts to recover from errors and continue parsing to collect multiple errors.
+ */
+export function parseFunctionsWithRecovery(input: string): ParseResult {
+  const parser = new Parser(input);
+  return parser.parseWithRecovery();
 }
 
 /**

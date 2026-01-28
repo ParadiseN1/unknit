@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { Parser, ParseError, parseFunctions, parseSourceRef } from './parser.js';
+import {
+  Parser,
+  ParseError,
+  parseFunctions,
+  parseFunctionsWithRecovery,
+  parseSourceRef,
+} from './parser.js';
 import { NodeType } from './types.js';
 
 describe('Parser', () => {
@@ -522,6 +528,209 @@ fn second() -> b:
         expect(error.line).toBe(1);
         expect(error.column).toBeGreaterThan(0);
       }
+    });
+
+    it('includes expected and found info in error', () => {
+      try {
+        parseFunctions('fn process() result:');
+        expect.fail('Should have thrown');
+      } catch (e) {
+        expect(e).toBeInstanceOf(ParseError);
+        const error = e as ParseError;
+        expect(error.expected).toBe('->');
+        expect(error.found).toBe('result');
+      }
+    });
+  });
+
+  describe('error recovery (US-008)', () => {
+    describe('parseFunctionsWithRecovery', () => {
+      it('returns empty result for valid empty input', () => {
+        const result = parseFunctionsWithRecovery('');
+        expect(result.nodes).toEqual([]);
+        expect(result.errors).toEqual([]);
+        expect(result.success).toBe(true);
+      });
+
+      it('returns success for valid input', () => {
+        const input = 'fn process(data) -> result:';
+        const result = parseFunctionsWithRecovery(input);
+
+        expect(result.nodes).toHaveLength(1);
+        expect(result.errors).toEqual([]);
+        expect(result.success).toBe(true);
+      });
+
+      it('collects error and continues parsing', () => {
+        const input = `fn invalid(
+fn second() -> result:`;
+        const result = parseFunctionsWithRecovery(input);
+
+        // Should have collected an error for the first function
+        expect(result.errors.length).toBeGreaterThanOrEqual(1);
+        expect(result.success).toBe(false);
+        // Should have recovered and parsed the second function
+        expect(result.nodes.length).toBeGreaterThanOrEqual(1);
+      });
+
+      it('collects multiple errors from multiple malformed functions', () => {
+        const input = `fn bad1(
+fn bad2(
+fn good() -> result:`;
+        const result = parseFunctionsWithRecovery(input);
+
+        // Should have multiple errors
+        expect(result.errors.length).toBeGreaterThanOrEqual(2);
+        expect(result.success).toBe(false);
+        // Should have parsed the good function
+        expect(result.nodes.length).toBeGreaterThanOrEqual(1);
+        const goodFn = result.nodes.find((n) => n.name === 'good');
+        expect(goodFn).toBeDefined();
+      });
+
+      it('collects error when missing return type', () => {
+        const input = `fn process() ->:
+fn second() -> result:`;
+        const result = parseFunctionsWithRecovery(input);
+
+        expect(result.errors.length).toBeGreaterThanOrEqual(1);
+        expect(result.errors[0]?.line).toBe(1);
+      });
+
+      it('collects error when unexpected token at start', () => {
+        const input = `process() -> result:
+fn second() -> result:`;
+        const result = parseFunctionsWithRecovery(input);
+
+        expect(result.errors.length).toBeGreaterThanOrEqual(1);
+        expect(result.errors[0]?.expected).toBe('fn');
+      });
+
+      it('provides descriptive error messages', () => {
+        const input = 'fn process() result:';
+        const result = parseFunctionsWithRecovery(input);
+
+        expect(result.errors).toHaveLength(1);
+        expect(result.errors[0]?.message).toContain("Expected '->'");
+        expect(result.errors[0]?.message).toContain('result');
+      });
+
+      it('preserves correctly parsed functions between errors', () => {
+        const input = `fn first() -> a:
+fn invalid(
+fn second() -> b:
+fn broken() ->
+fn third() -> c:`;
+        const result = parseFunctionsWithRecovery(input);
+
+        // Should have parsed first, second, and third
+        const names = result.nodes.map((n) => n.name);
+        expect(names).toContain('first');
+        expect(names).toContain('second');
+        expect(names).toContain('third');
+        // Should have errors for invalid and broken
+        expect(result.errors.length).toBeGreaterThanOrEqual(2);
+      });
+    });
+
+    describe('ParseError properties', () => {
+      it('has expected and found properties', () => {
+        const error = new ParseError(
+          'test error',
+          1,
+          5,
+          'identifier',
+          '('
+        );
+
+        expect(error.expected).toBe('identifier');
+        expect(error.found).toBe('(');
+        expect(error.line).toBe(1);
+        expect(error.column).toBe(5);
+      });
+
+      it('works without expected/found', () => {
+        const error = new ParseError('test error', 1, 5);
+
+        expect(error.expected).toBeUndefined();
+        expect(error.found).toBeUndefined();
+        expect(error.message).toBe('test error at line 1, column 5');
+      });
+    });
+
+    describe('Parser.parseWithRecovery method', () => {
+      it('can be called directly on Parser instance', () => {
+        const parser = new Parser('fn test() -> result:');
+        const result = parser.parseWithRecovery();
+
+        expect(result.success).toBe(true);
+        expect(result.nodes).toHaveLength(1);
+        expect(result.errors).toEqual([]);
+      });
+
+      it('recovers from error in function body', () => {
+        const input = `fn process() -> result:
+  @incomplete
+fn second() -> result:
+  -> done`;
+        const result = parseFunctionsWithRecovery(input);
+
+        // Should have at least one error for incomplete external call
+        expect(result.errors.length).toBeGreaterThanOrEqual(1);
+        // Should have parsed both functions (with recovery)
+        expect(result.nodes.length).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    describe('multi-line error locations', () => {
+      it('reports correct line number for error on second line', () => {
+        const input = `fn first() -> result:
+fn second) -> result:`;
+        const result = parseFunctionsWithRecovery(input);
+
+        const secondLineError = result.errors.find((e) => e.line === 2);
+        expect(secondLineError).toBeDefined();
+      });
+
+      it('reports correct line number for error in function body', () => {
+        const input = `fn process() -> result:
+  validate()
+  @incomplete
+fn second() -> result:`;
+        const result = parseFunctionsWithRecovery(input);
+
+        // Error should be on line 3
+        const bodyError = result.errors.find((e) => e.line === 3);
+        expect(bodyError).toBeDefined();
+      });
+    });
+
+    describe('error recovery edge cases', () => {
+      it('handles input with only errors', () => {
+        const input = `bad1(
+bad2(
+bad3(`;
+        const result = parseFunctionsWithRecovery(input);
+
+        expect(result.nodes).toEqual([]);
+        expect(result.errors.length).toBeGreaterThanOrEqual(1);
+        expect(result.success).toBe(false);
+      });
+
+      it('handles deeply nested error and recovers', () => {
+        const input = `fn first() -> result:
+  level1:
+    level2:
+      @broken
+fn second() -> result:
+  -> done`;
+        const result = parseFunctionsWithRecovery(input);
+
+        // Should have error for broken call
+        expect(result.errors.length).toBeGreaterThanOrEqual(1);
+        // Should have parsed both functions
+        expect(result.nodes.length).toBeGreaterThanOrEqual(1);
+      });
     });
   });
 
