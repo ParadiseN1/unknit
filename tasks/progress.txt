@@ -1,0 +1,587 @@
+## Codebase Patterns
+- Use pnpm as package manager with workspaces
+- Use turbo for build orchestration across packages
+- TypeScript config extends tsconfig.base.json in each package
+- Each package has `build`, `typecheck`, `lint`, `test`, and `clean` scripts
+- ESLint v8 with @typescript-eslint for linting
+- Package naming: `@unknit/<package-name>`
+- Vitest for unit testing with `vitest.config.ts` in each package
+- Test files use `*.test.ts` suffix in `src/` directory
+- Use `??` for default values when accessing array indices to satisfy strict TypeScript
+- Avoid `while(true)` loops - use explicit condition to avoid ESLint `no-constant-condition`
+- Export classes with `export class` and helper functions with `export function`
+
+---
+
+## 2026-01-28 - US-001
+- **What was implemented**: Monorepo setup with build tooling
+- **Files created**:
+  - `package.json` - root package with pnpm workspaces
+  - `pnpm-workspace.yaml` - defines packages/*
+  - `turbo.json` - build orchestration
+  - `tsconfig.base.json` - shared TypeScript options
+  - `.gitignore` - ignores node_modules, dist, etc.
+  - `.prettierrc` - code formatting config
+  - `.eslintrc.js` - linting config
+  - `pnpm-lock.yaml` - dependency lockfile
+  - `packages/core/` - placeholder core package structure
+- **Learnings for future iterations:**
+  - Use `type: "module"` in package.json for ESM packages
+  - Use `moduleResolution: "NodeNext"` in tsconfig for proper ESM support
+  - Include `"files": ["dist"]` in package.json to specify published files
+  - Exports field should include both `types` and `import` conditions
+---
+
+## 2026-01-28 - US-002
+- **What was implemented**: Vitest testing configuration for @unknit/core
+- **Files changed**:
+  - `packages/core/package.json` - Added vitest dependency and test scripts
+  - `packages/core/vitest.config.ts` - Vitest configuration file
+  - `packages/core/src/index.test.ts` - Placeholder test file
+  - `pnpm-lock.yaml` - Updated with vitest dependencies
+- **Learnings for future iterations:**
+  - Use `vitest run` for CI/single run, `vitest` for watch mode
+  - Import from `./index.js` in test files (ESM requires .js extension even for .ts files)
+  - Vitest config uses `include: ['src/**/*.test.ts']` pattern for test discovery
+---
+
+## 2026-01-28 - US-003
+- **What was implemented**: Core type system for unknit AST
+- **Files changed**:
+  - `packages/core/src/types.ts` - New file with all core types
+  - `packages/core/src/index.ts` - Updated to export all types
+- **Types defined**:
+  - `SourceRef` - Reference to source code location (file, startLine, endLine)
+  - `NodeType` - Enum for AST node types (fn, block, call, external_call, early_exit, return, error_handler)
+  - `UnknitNode` - AST node with type, name, params, returnType, errorType, sourceRef, children
+  - `UnknitFile` - Parsed unknit file with source path and functions array
+  - `DiagnosticSeverity` - Type for error/warning/info
+  - `DiagnosticRange` - Range within a file (startLine, startColumn, endLine, endColumn)
+  - `ValidationDiagnostic` - Validation issue with severity, message, range, optional sourceRef
+- **Learnings for future iterations:**
+  - UnknitNode uses optional properties (params?, returnType?, etc.) for flexibility across node types
+  - Export types using `export { type TypeName }` syntax for ESM compatibility
+  - DiagnosticRange uses 1-indexed line/column numbers to match editor conventions
+---
+
+## 2026-01-28 - US-004
+- **What was implemented**: Unknit tokenizer for breaking syntax into tokens
+- **Files changed**:
+  - `packages/core/src/tokenizer.ts` - Tokenizer implementation
+  - `packages/core/src/tokenizer.test.ts` - Comprehensive unit tests (39 tests)
+  - `packages/core/src/index.ts` - Added tokenizer exports
+- **Token types implemented**:
+  - Keywords: FN, ON
+  - Operators: ARROW (->), EARLY_EXIT (*->), AT (@), LPAREN, RPAREN, COLON, PIPE, COMMA, QUESTION
+  - Values: IDENTIFIER, SOURCE_REF
+  - Structure: INDENT, DEDENT, NEWLINE, EOF
+- **Key features**:
+  - Tracks indentation levels with a stack for Python-style blocks
+  - Handles multi-character operators (*-> before ->)
+  - Parses source references {{src:file:line-line}}
+  - Reports line and column numbers for all tokens
+- **Learnings for future iterations:**
+  - Use `??` for default values when accessing array elements to satisfy TypeScript strict mode
+  - Avoid `while(true)` loops - ESLint flags them as `no-constant-condition`
+  - TokenizerError class includes line/column for helpful error messages
+  - DEDENT tokens may need to be queued when dedenting multiple levels at once
+---
+
+## 2026-01-28 - US-005
+- **What was implemented**: Parser for function definitions
+- **Files changed**:
+  - `packages/core/src/parser.ts` - Parser class with function parsing logic
+  - `packages/core/src/parser.test.ts` - Unit tests (25 tests)
+  - `packages/core/src/index.ts` - Added parser exports
+- **Parser capabilities**:
+  - Parses `fn name(params) -> return_type | error_type:` syntax
+  - Handles required parameters and optional parameters with `?` suffix
+  - Parses return types with optional error types separated by `|`
+  - Creates UnknitNode with type 'fn'
+  - Skips function body content (deferred to US-006)
+- **Key features**:
+  - ParseError class with line/column for error reporting
+  - Recursive descent parsing pattern
+  - Correctly handles indented function bodies by tracking indent/dedent tokens
+- **Learnings for future iterations:**
+  - When parsing function definitions, need to skip over function body (INDENT/DEDENT pairs) to find next top-level function
+  - Use `skipFunctionBody()` to track indent level and skip until back at base level
+  - Remove unused imports to avoid TypeScript errors with strict mode
+---
+
+## 2026-01-28 - US-006
+- **What was implemented**: Parser for blocks, calls, and nested structures
+- **Files changed**:
+  - `packages/core/src/parser.ts` - Extended parser with body parsing logic
+  - `packages/core/src/parser.test.ts` - Added 20 new tests for blocks and calls (45 total)
+- **Parser capabilities**:
+  - Internal calls: `name()` → NodeType.call
+  - External calls: `@name()` → NodeType.external_call
+  - Returns: `-> value` → NodeType.return
+  - Early exits: `*-> value` → NodeType.early_exit
+  - Error handlers: `on error:` → NodeType.error_handler
+  - Block labels: `name:` → NodeType.block
+  - Full parent-child relationship building based on indentation
+- **Key implementation patterns**:
+  - `parseFunctionBody()` replaces `skipFunctionBody()` to build child AST
+  - `parseBodyElement()` dispatches to specific parsers based on token type
+  - `parseNestedChildren()` handles INDENT/DEDENT for nested blocks
+  - `parseCallOrBlock()` distinguishes between calls `()` and blocks `:`
+- **Learnings for future iterations:**
+  - An identifier can be a call (if followed by `()`) or a block label (if followed by `:`)
+  - Nested children are parsed recursively with INDENT/DEDENT tracking
+  - Returns and early exits can optionally have a value identifier
+  - Error handlers use the `on` keyword followed by an identifier and colon
+---
+
+## 2026-01-28 - US-007
+- **What was implemented**: Source reference extraction in parser
+- **Files changed**:
+  - `packages/core/src/parser.ts` - Added parseSourceRef function and source ref capture in all node parsing methods
+  - `packages/core/src/parser.test.ts` - Added 18 new tests for source reference parsing (63 total)
+  - `packages/core/src/index.ts` - Exported parseSourceRef function
+- **Parser capabilities**:
+  - `parseSourceRef()` extracts SourceRef from `{{src:file:line-line}}` token values
+  - All node types (fn, call, external_call, block, return, early_exit, error_handler) now capture sourceRef
+  - Handles Windows-style paths with colons in drive letter (finds last colon for separator)
+  - Single line references (`{{src:file:42}}`) set startLine = endLine
+  - Missing source references handled gracefully (undefined sourceRef)
+- **Key implementation patterns**:
+  - `tryConsumeSourceRef()` attempts to consume SOURCE_REF token and parse it
+  - Regex pattern `^\{\{src:(.+)\}\}$` extracts content between delimiters
+  - Line range pattern `^(\d+)(?:-(\d+))?$` handles both single and range formats
+  - Source refs captured after the syntactic element (e.g., after `:` in blocks, after `)` in calls)
+- **Learnings for future iterations:**
+  - Use lastIndexOf to find file:line separator to support paths with colons
+  - Source references are optional on all node types
+  - Parser should try to capture source ref but continue if not present
+---
+
+## 2026-01-28 - US-008
+- **What was implemented**: Parse error handling with recovery and multiple error collection
+- **Files changed**:
+  - `packages/core/src/parser.ts` - Added ParseResult interface, error recovery, and synchronization
+  - `packages/core/src/parser.test.ts` - Added 17 new tests for error handling (80 total)
+  - `packages/core/src/index.ts` - Exported ParseResult type and parseFunctionsWithRecovery function
+- **Parser capabilities**:
+  - `ParseError` now includes `expected` and `found` properties for detailed error messages
+  - `ParseResult` interface with `nodes`, `errors`, and `success` fields
+  - `parseWithRecovery()` method collects multiple errors instead of throwing on first error
+  - `synchronize()` method skips to next `fn` keyword after error for recovery
+  - `parseFunctionsWithRecovery()` convenience function for error-tolerant parsing
+- **Key implementation patterns**:
+  - Original `parse()` method still throws on first error for backwards compatibility
+  - Recovery works by catching ParseError, adding to errors array, then synchronizing
+  - Synchronization looks for `fn` keyword after newlines and dedents
+  - `tokenTypeName()` helper converts token types to human-readable strings
+- **Learnings for future iterations:**
+  - Keep backwards-compatible `parse()` that throws, add new `parseWithRecovery()` for error collection
+  - Avoid unused class properties - TypeScript strict mode flags them as errors
+  - Error recovery is best at top-level (function boundaries) rather than mid-expression
+  - `expected` and `found` properties help tools and IDEs provide better error messages
+---
+
+## 2026-01-28 - US-009
+- **What was implemented**: Unknit serializer for converting AST back to unknit syntax
+- **Files changed**:
+  - `packages/core/src/serializer.ts` - Serializer implementation
+  - `packages/core/src/serializer.test.ts` - Unit tests (37 tests including round-trip tests)
+  - `packages/core/src/index.ts` - Exported serializer functions
+- **Serializer capabilities**:
+  - `serialize(nodes)` - Converts array of UnknitNode to unknit text
+  - `serializeSourceRef(sourceRef)` - Formats source references as `{{src:file:line-line}}`
+  - `Serializer` class with `serialize()`, `serializeNode()`, and `serializeSourceRef()` methods
+- **Key features**:
+  - 2 spaces per indentation level (matching parser expectations)
+  - Handles all node types: fn, call, external_call, block, return, early_exit, error_handler
+  - Single-line source refs use `{{src:file:42}}` format (no range)
+  - Multiple functions separated by blank lines
+  - Round-trip tests verify `parse -> serialize -> parse` produces identical AST
+- **Learnings for future iterations:**
+  - Serializer is the inverse of parser - same format rules apply
+  - Round-trip testing is essential to verify correctness
+  - Keep source ref formatting consistent with how parser expects them
+  - Empty params should serialize as `()`, empty name as just the operator
+---
+
+## 2026-01-28 - US-010
+- **What was implemented**: Source file existence validator
+- **Files changed**:
+  - `packages/core/src/validator.ts` - Validator implementation
+  - `packages/core/src/validator.test.ts` - Unit tests (26 tests)
+  - `packages/core/src/index.ts` - Added validator exports
+- **Validator capabilities**:
+  - `validateSourceRef(sourceRef, options)` - Validates single source reference
+  - `validateNode(node, options)` - Validates node tree recursively
+  - `validateNodes(nodes, options)` - Validates multiple top-level nodes
+  - `SourceFileValidator` class with instance methods for all above
+- **Key features**:
+  - Checks if source file exists using `fs.access()`
+  - Reads file to count lines and validate line bounds
+  - Reports error if `startLine < 1` or `endLine > totalLines`
+  - Reports error if `startLine > endLine`
+  - Returns ValidationDiagnostic with severity 'error' and sourceRef attached
+  - Uses async/await for all file operations
+  - Collects all source refs recursively from nested node trees
+- **Learnings for future iterations:**
+  - Use `node:fs/promises` for async file operations
+  - Create temporary fixture files in tests using `beforeAll/afterAll` with `tmpdir()`
+  - Empty files have 0 lines (important for bounds checking)
+  - Files ending with newline: count newlines, not lines after split
+  - ValidatorOptions uses `basePath` to resolve relative file paths
+---
+
+## 2026-01-28 - US-011
+- **What was implemented**: Source coverage validator for detecting overlaps and gaps
+- **Files changed**:
+  - `packages/core/src/validator.ts` - Added validateCoverage function and SourceCoverageValidator class
+  - `packages/core/src/validator.test.ts` - Added 24 new tests for coverage validation (50 total in file)
+  - `packages/core/src/index.ts` - Exported new coverage validator functions and types
+- **Features implemented**:
+  - `validateCoverage(nodes, options, expectedRange?)` - Main coverage validation function
+  - `SourceCoverageValidator` class with `validateCoverage()` instance method
+  - `SourceFileValidator.validateCoverage()` - Added to existing class for convenience
+  - Overlap detection: Detects when source lines are covered by multiple blocks
+  - Gap detection: Detects when expected source lines are not covered by any block
+  - Groups source references by file for independent validation
+  - Returns ValidationDiagnostic with severity 'warning' for all coverage issues
+- **Learnings for future iterations:**
+  - Use `void options;` to avoid unused parameter warnings when parameter is required for interface consistency
+  - Overlaps are detected by sorting refs by startLine and checking if current.endLine >= next.startLine
+  - Gaps require an expectedRange parameter to know what range should be covered
+  - Build a Set<number> of covered lines for O(1) gap detection
+  - Single-line gaps/overlaps format as "line X" instead of "lines X-X" for readability
+---
+
+## 2026-01-28 - US-012
+- **What was implemented**: Source-to-block mapper for bidirectional mapping between source lines and unknit blocks
+- **Files changed**:
+  - `packages/core/src/mapper.ts` - New file with SourceBlockMapper class and helper functions
+  - `packages/core/src/mapper.test.ts` - Unit tests (29 tests)
+  - `packages/core/src/index.ts` - Added mapper exports
+- **Features implemented**:
+  - `SourceBlockMapper` class for encapsulated mapper functionality
+  - `getBlockForLine(file, line)` - Returns owning UnknitNode for a source line
+  - `getLinesForBlock(node)` - Returns SourceRef for a node
+  - `getBlockPath(file, line)` - Returns ancestor chain from root to leaf
+  - Optimized line-to-block index using nested Maps for O(1) lookup
+  - `getIndexedFiles()` and `getIndexedLines(file)` for introspection
+  - `rebuild()` method to reindex after node modifications
+- **Key implementation patterns**:
+  - LineIndex type: `Map<string, Map<number, LineIndexEntry>>` for file -> line -> entry
+  - LineIndexEntry stores both the node and its ancestor path for getBlockPath
+  - Recursive indexNode function processes children after parent, so deeper nodes overwrite parent entries
+  - Nested blocks correctly resolved to most specific (deepest) covering block
+- **Learnings for future iterations:**
+  - Use Map<string, Map<number, T>> for efficient two-level lookup (file -> line -> value)
+  - Process parent nodes before children so children overwrite parent entries for their line ranges
+  - Store ancestor chain at index time to avoid re-traversing for getBlockPath
+  - Handle nodes without sourceRef gracefully (just skip indexing them)
+---
+
+## 2026-01-28 - US-013
+- **What was implemented**: Smart updater for automatic line number updates when source code changes
+- **Files changed**:
+  - `packages/core/src/updater.ts` - New file with SmartUpdater class and helper functions
+  - `packages/core/src/updater.test.ts` - Unit tests (37 tests)
+  - `packages/core/src/index.ts` - Added updater exports
+- **Features implemented**:
+  - `LineShift` interface representing line insertions (positive delta) or deletions (negative delta)
+  - `detectLineShifts(originalLines, modifiedLines)` - Compares line arrays to find shift points
+  - `applyShiftsToSourceRef(sourceRef, file, shifts)` - Applies shifts to a single SourceRef
+  - `applyShiftsToNodes(nodes, file, shifts)` - Recursively updates all nodes for a file
+  - `SmartUpdater` class with `update()`, `applyShifts()`, `detectShifts()`, `getReferencedFiles()` methods
+  - `UpdateResult` interface with `nodes`, `updatedCount`, and `affectedFiles`
+- **Key implementation patterns**:
+  - Uses LCS-style approach to find first divergence point from start and end
+  - Calculates single delta at divergence point (insertion or deletion)
+  - Applies shifts only to lines at or after the shift point
+  - Mutates nodes in place for efficiency, returns count of updated refs
+  - Preserves user edits to block names (only updates sourceRef line numbers)
+- **Learnings for future iterations:**
+  - Line shifts are simpler with a single divergence point approach
+  - Content-only changes (same line count) return no shifts
+  - Apply shifts based on `startLine >= shift.atLine` logic
+  - Consider multiple shift scenarios for complex diffs (future enhancement)
+---
+
+## 2026-01-28 - US-014
+- **What was implemented**: Structural change detection to identify when source changes require LLM regeneration
+- **Files changed**:
+  - `packages/core/src/structural-detector.ts` - New file with StructuralChangeDetector class and helper functions
+  - `packages/core/src/structural-detector.test.ts` - Unit tests (26 tests)
+  - `packages/core/src/index.ts` - Added structural detector exports
+- **Features implemented**:
+  - `FunctionSignature` interface representing extracted function signatures from source code
+  - `StructuralChangeType` enum: function_added, function_removed, signature_changed
+  - `StructuralChange` interface with type, functionName, file, message, and optional node/signature refs
+  - `StructuralChangeResult` interface with `regenerationNeeded` flag and `changes` array
+  - `detectStructuralChanges(nodes, sourceSignatures)` - Main detection function
+  - `StructuralChangeDetector` class with `detect()`, `needsRegeneration()`, `getReferencedFiles()` methods
+- **Key implementation patterns**:
+  - Groups unknit nodes and source signatures by file for efficient per-file comparison
+  - Matches functions first by line overlap (most reliable), then by name fallback
+  - Detects parameter changes by comparing cleaned param names (strips `?` optional suffix)
+  - Detects renames when lines overlap but names differ
+  - Returns comprehensive change list with context for UI display
+- **Learnings for future iterations:**
+  - Line overlap matching is more robust than name-only matching when lines shift
+  - Use helper functions like `getChange(array, index)` in tests to satisfy TypeScript strict mode
+  - Optional parameter suffix `?` in unknit should be stripped before comparison with source params
+  - The detector takes FunctionSignature[] as input - this will be provided by source code readers (US-018, US-019)
+---
+
+## 2026-01-28 - US-015
+- **What was implemented**: @unknit/generate package structure
+- **Files created**:
+  - `packages/generate/package.json` - Package manifest with @anthropic-ai/sdk dependency
+  - `packages/generate/tsconfig.json` - TypeScript config extending base config
+  - `packages/generate/src/index.ts` - Placeholder exports with type definitions
+  - `packages/generate/vitest.config.ts` - Vitest test configuration
+  - `packages/generate/src/index.test.ts` - Placeholder test file
+- **Types defined**:
+  - `UnknitConfig` - Configuration interface for project settings
+  - `CodeMetadata` - Metadata extracted from source code for LLM context
+  - `FunctionBoundary` - Function boundary in source code
+  - `ImportStatement` - Import statement from source code
+  - `GenerationResult` - Result of unknit generation
+  - `GenerationError` - Error during generation
+- **Learnings for future iterations:**
+  - Generate package depends on @unknit/core using `workspace:*` for local dev
+  - Vitest requires at least one test file to pass - add placeholder test for VERSION
+  - @anthropic-ai/sdk is the Anthropic AI SDK for LLM generation
+  - pnpm-lock.yaml updates automatically when adding new workspace package dependencies
+---
+
+## 2026-01-28 - US-016
+- **What was implemented**: Project configuration loader for .unknit.yaml files
+- **Files changed**:
+  - `packages/generate/package.json` - Added yaml library dependency
+  - `packages/generate/src/config.ts` - New file with configuration loading logic
+  - `packages/generate/src/config.test.ts` - Unit tests (41 tests)
+  - `packages/generate/src/index.ts` - Updated exports to include config types and functions
+- **Features implemented**:
+  - `UnknitConfig` interface with internalPackages, externalPackages, sourceRoot, outputRoot, includeSourceRefs fields
+  - `RawUnknitConfig` interface for partial config from YAML
+  - `loadConfig(projectRoot)` async function to load config from .unknit.yaml
+  - `ConfigLoader` class with `load()`, `exists()`, `getConfigPath()` methods
+  - `parseConfigContent(content)` for YAML parsing with validation
+  - `mergeWithDefaults(raw)` for applying defaults to partial config
+  - `ConfigError` class for config-related errors
+  - `DEFAULT_CONFIG` with sensible defaults (empty arrays, "." for paths, true for includeSourceRefs)
+- **Learnings for future iterations:**
+  - Use `yaml` library (version 2.x) for YAML parsing - simple API with `parse()` function
+  - Validate YAML structure manually after parsing (typeof checks, Array.isArray, etc.)
+  - Config files may be empty or partially populated - always merge with defaults
+  - Use `node:fs/promises` access() to check file existence before reading
+---
+
+## 2026-01-28 - US-017
+- **What was implemented**: Package auto-detection for Python and JS/TS projects
+- **Files changed**:
+  - `packages/generate/src/package-detector.ts` - New file with package detection logic
+  - `packages/generate/src/package-detector.test.ts` - Unit tests (31 tests)
+  - `packages/generate/src/index.ts` - Added package-detector exports
+- **Features implemented**:
+  - `detectPythonPackages(projectRoot)` - Detects Python packages from pyproject.toml
+    - Extracts from [project] name, [tool.poetry] name, packages list
+    - Handles src layout with pythonized package names (dashes to underscores)
+  - `detectJsPackages(projectRoot)` - Detects JS/TS packages from package.json and pnpm-workspace.yaml
+    - Supports npm/yarn workspaces array format
+    - Supports yarn workspaces object format
+    - Supports pnpm-workspace.yaml
+    - Resolves glob patterns (e.g., "packages/*") to actual package names
+  - `detectPackages(projectRoot)` - Tries Python first, falls back to JS
+  - `mergePackages(detected, configured)` - Merges auto-detected with manually configured
+  - `loadConfigWithAutoDetection(projectRoot, config)` - Convenience function
+  - `PackageDetector` class for OO access
+- **Learnings for future iterations:**
+  - Simple TOML parsing with regex is sufficient for pyproject.toml package name extraction
+  - For workspace globs like "packages/*", read package.json from each subdirectory
+  - Root package name should set source even without workspaces
+  - Use Set for deduplication when merging packages
+---
+
+## 2026-01-28 - US-018
+- **What was implemented**: Python source code reader for extracting metadata from Python files
+- **Files created**:
+  - `packages/generate/src/python-reader.ts` - Python reader implementation
+  - `packages/generate/src/python-reader.test.ts` - Unit tests (64 tests)
+- **Files changed**:
+  - `packages/generate/src/index.ts` - Added Python reader exports
+- **Features implemented**:
+  - `readPythonSource(filePath, options)` - Reads Python file and extracts metadata
+  - `parsePythonSource(filePath, content, options)` - Parses Python source content
+  - `extractFunctionBoundaries(lines)` - Finds def statements with start/end lines based on indentation
+  - `extractImportStatements(lines, options)` - Extracts import and from...import statements
+  - `matchFunctionDefinition(line)` - Regex matching for def/async def with params and return type
+  - `parseParameters(paramsRaw)` - Handles typed params, defaults, *args, **kwargs
+  - `classifyImport(module, options)` - Classifies imports as internal (relative, configured) or external
+  - `PythonReaderOptions` interface with internalPackages, externalPackages
+  - `PythonReader` class with `read()`, `parse()`, `extractFunctions()`, `extractImports()` methods
+- **Key implementation patterns**:
+  - Function end detection uses indentation tracking (Python-style block detection)
+  - Skip blank lines and comments when finding function body end
+  - Type annotations use bracket depth tracking to handle complex nested types
+  - Relative imports (.module, ..parent) are always classified as internal
+  - External packages list overrides internal packages for explicit external marking
+- **Learnings for future iterations:**
+  - Python function boundaries require indentation-based detection unlike TS/JS which uses braces
+  - Use `lines[i] ?? ''` pattern for safe array access per codebase convention
+  - Parameters can have type annotations with nested brackets - track depth when splitting on commas
+  - Simple regex sufficient for import parsing (import X, from Y import Z patterns)
+  - Split PythonReaderOptions from full UnknitConfig for cleaner interface
+---
+
+## 2026-01-28 - US-019
+- **What was implemented**: TypeScript/JavaScript source code reader for extracting metadata from TS/JS files
+- **Files created**:
+  - `packages/generate/src/typescript-reader.ts` - TypeScript reader implementation
+  - `packages/generate/src/typescript-reader.test.ts` - Unit tests (103 tests)
+- **Files changed**:
+  - `packages/generate/src/index.ts` - Added TypeScript reader exports with alias naming to avoid conflicts
+- **Features implemented**:
+  - `readTypeScriptSource(filePath, options)` - Reads TS/JS file and extracts metadata
+  - `parseTypeScriptSource(filePath, content, options)` - Parses TS/JS source content
+  - `extractFunctionBoundaries(lines)` - Finds function declarations, arrow functions, and class methods
+  - `extractImportStatements(lines, options)` - Extracts ES6 imports, require statements, and re-exports
+  - `matchFunctionDeclaration(line)` - Matches `function name()` patterns including async/export
+  - `matchArrowFunction(line, lineIndex, lines)` - Matches `const name = () => {}` patterns
+  - `matchClassMethod(line, lineIndex, lines)` - Matches class methods with modifiers (public, private, async, etc.)
+  - `findFunctionEnd(lines, startIndex, openBraceOffset)` - Finds end by brace depth counting
+  - `countBraces(line)` - Counts braces while ignoring strings and comments
+  - `parseParameters(paramsRaw)` - Handles typed params, optional, rest params, destructured
+  - `classifyImport(module, options)` - Classifies imports (relative, scoped packages, node: builtins)
+  - `getLanguageFromPath(filePath)` - Determines language from file extension
+  - `TypeScriptReaderOptions` interface with internalPackages, externalPackages
+  - `TypeScriptReader` class with `read()`, `parse()`, `extractFunctions()`, `extractImports()` methods
+- **Key implementation patterns**:
+  - Function end detection uses brace depth tracking (unlike Python which uses indentation)
+  - Arrow functions can have expression bodies (no braces) - detected by openBraceOffset = -1
+  - Class method regex uses non-capturing groups (?:...) for modifiers to avoid capture issues
+  - Supports getter/setter methods with `get`/`set` keywords
+  - Constructor is handled as a special case (valid method name)
+  - Scoped packages (@scope/name) need special handling for package name extraction
+  - node: prefixed imports are always external
+- **Learnings for future iterations:**
+  - Use non-capturing groups (?:...) in regexes when you need to match repeated alternatives
+  - When exporting conflicting names from multiple modules, use `as` aliases (e.g., `parseParameters as parseTypeScriptParameters`)
+  - Brace counting must ignore braces in strings (single, double, template) and comments
+  - Expression body arrow functions (`const f = x => x * 2`) need different end detection logic
+  - class/interface/type/enum keywords should be filtered out as they look like method calls
+---
+
+## 2026-01-28 - US-020
+- **What was implemented**: LLM prompt builder for constructing well-structured prompts for unknit generation
+- **Files created**:
+  - `packages/generate/src/prompt-builder.ts` - Prompt builder implementation
+  - `packages/generate/src/prompt-builder.test.ts` - Unit tests (62 tests)
+- **Files changed**:
+  - `packages/generate/src/index.ts` - Added prompt builder exports
+- **Features implemented**:
+  - `UNKNIT_SPEC_CONDENSED` - Condensed unknit language spec for system prompts
+  - `GENERATION_RULES` - Rules for consistent LLM output
+  - `FEW_SHOT_EXAMPLES` - Python and TypeScript examples for few-shot learning
+  - `SOURCE_REF_INSTRUCTIONS` - Instructions for source reference inclusion
+  - `buildSystemPrompt(options)` - Builds system prompt with spec, rules, examples
+  - `buildUserPrompt(sourceCode, metadata, options)` - Builds user prompt with source code and metadata
+  - `buildPrompts(sourceCode, metadata, options)` - Builds both prompts
+  - `formatFunctionBoundaries(functions)` - Formats function boundaries for context
+  - `formatImportStatements(imports)` - Formats imports with internal/external classification
+  - `PromptBuilder` class - OO interface with `buildSystemPrompt()`, `buildUserPrompt()`, `build()`, `getSpec()`, `getRules()`, `getExamples()`
+  - `PromptBuilderOptions` interface with `includeSourceRefs`, `additionalContext`
+  - `BuiltPrompts` interface with `systemPrompt`, `userPrompt`
+- **Key implementation patterns**:
+  - System prompt follows: role → spec → rules → (source refs) → examples → output format
+  - User prompt follows: intro → function boundaries → imports → (source refs) → (additional context) → source code
+  - Few-shot examples demonstrate both Python and TypeScript conversions
+  - Examples show internal calls, external calls, early exits, and error handling
+- **Learnings for future iterations:**
+  - Structured prompts improve LLM output consistency
+  - Few-shot examples are critical for demonstrating the expected output format
+  - Separating internal vs external imports helps LLM correctly use `name()` vs `@name()` syntax
+  - Include function boundaries to help LLM understand code structure
+  - Output format section should explicitly tell LLM "no markdown code fences"
+---
+
+## 2026-01-28 - US-021
+- **What was implemented**: Anthropic LLM client for unknit generation
+- **Files created**:
+  - `packages/generate/src/llm-client.ts` - LLM client implementation
+  - `packages/generate/src/llm-client.test.ts` - Unit tests (26 tests)
+- **Files changed**:
+  - `packages/generate/src/index.ts` - Added LLM client exports
+- **Features implemented**:
+  - `LLMClient` class - Main client for Anthropic API interactions
+    - `generate(sourceCode, metadata, promptOptions)` - Generates unknit from source code
+    - `getModel()`, `getMaxTokens()`, `getMaxRetries()` - Accessor methods
+  - `generateUnknit(sourceCode, metadata, options)` - Convenience function
+  - `LLMClientOptions` interface - apiKey, model, maxTokens, maxRetries, timeout
+  - `LLMGenerationResult` interface - success, content, error, usage
+  - `LLMGenerationError` interface - code, message, status, retryable
+  - Retry logic with exponential backoff (1s, 2s, 4s delays)
+  - Error classification:
+    - `RATE_LIMIT` (429) - retryable
+    - `AUTHENTICATION_ERROR` (401) - not retryable
+    - `BAD_REQUEST` (400) - not retryable
+    - `SERVER_ERROR` (5xx) - retryable
+    - `CONNECTION_ERROR` - retryable
+    - `NO_TEXT_CONTENT` - not retryable
+    - `UNKNOWN_ERROR` - not retryable
+  - Integrates with prompt-builder for system/user prompt construction
+- **Key implementation patterns**:
+  - Uses `@anthropic-ai/sdk` with `maxRetries: 0` to handle retries internally
+  - Extracts text content from response, returns error if no text block found
+  - Trims whitespace from generated content
+  - Token usage tracking (inputTokens, outputTokens)
+- **Learnings for future iterations:**
+  - Use `vi.hoisted()` for vitest mocks that need to define both functions and classes
+  - Mock class static properties (like error classes) on the mock constructor
+  - Anthropic SDK errors inherit from `APIError` base class with `status` property
+  - `APIConnectionError` is separate from `APIError` (different error type)
+  - Mock setTimeout in tests to avoid real delays in retry tests
+---
+
+## 2026-01-28 - US-022
+- **What was implemented**: Generation orchestrator for end-to-end unknit file generation
+- **Files created**:
+  - `packages/generate/src/orchestrator.ts` - Orchestrator implementation
+  - `packages/generate/src/orchestrator.test.ts` - Unit tests (23 tests)
+  - `packages/generate/src/types.ts` - Shared types to avoid circular dependencies
+- **Files changed**:
+  - `packages/generate/src/index.ts` - Added orchestrator exports, refactored type exports
+  - `packages/generate/src/python-reader.ts` - Import from types.ts instead of index.ts
+  - `packages/generate/src/typescript-reader.ts` - Import from types.ts instead of index.ts
+- **Features implemented**:
+  - `generate(sourceFilePath, options)` - Main orchestration function
+    - Loads project configuration (with auto-detection)
+    - Reads source file and extracts metadata (Python or TS/JS)
+    - Builds LLM prompt and calls LLM client
+    - Parses and validates generated unknit using core parser
+    - Writes .unknit file alongside source (configurable)
+    - Returns GenerationResult with success status and errors
+  - `getOutputPath(sourceFilePath, config, projectRoot?)` - Calculates output path
+    - Supports configurable outputRoot different from sourceRoot
+    - Preserves subdirectory structure
+  - `GenerationOrchestrator` class - OO interface
+    - `loadConfig(projectRoot)` - Load/reload configuration
+    - `generate(sourceFilePath, options)` - Generate unknit
+    - `generateBatch(sourceFilePaths, options)` - Process multiple files
+    - `isSupported(filePath)` - Check file type support
+    - `getOutputPath(sourceFilePath)` - Calculate output path
+  - `OrchestratorOptions` interface - apiKey, model, config, writeOutput, outputPath, validate, etc.
+  - File type validation - Only Python (.py) and TS/JS (.ts, .tsx, .js, .jsx) supported
+  - Comprehensive error codes: SOURCE_NOT_FOUND, UNSUPPORTED_FILE_TYPE, CONFIG_ERROR, READ_ERROR, LLM_ERROR, PARSE_ERROR, VALIDATION_ERROR, WRITE_ERROR
+- **Key implementation patterns**:
+  - Configuration loaded from file or provided directly
+  - Package auto-detection integrated via loadConfigWithPackageDetection
+  - LLM client instantiated per generate call (no shared state)
+  - Validation optional but enabled by default
+  - Source refs validation uses file directory as base path
+- **Learnings for future iterations:**
+  - Avoid circular dependencies by creating a `types.ts` file for shared types
+  - Import types from specific modules (types.ts, config.ts) not from index.ts
+  - When index.ts re-exports from a module that imports from index.ts, it creates circular dependency issues
+  - ESM module mocking in vitest is complex - `vi.mock` with factory functions works better than dynamic `vi.doMock`
+  - For testing modules with external dependencies like LLM clients, consider dependency injection or simpler unit tests
+---

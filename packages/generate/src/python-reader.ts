@@ -2,8 +2,11 @@
 // Extracts function boundaries and import statements from Python source files
 
 import { readFile } from 'node:fs/promises';
-import type { CodeMetadata, FunctionBoundary, ImportStatement } from './index.js';
+import type { CodeMetadata, FunctionBoundary, ImportStatement } from './types.js';
 import type { UnknitConfig } from './config.js';
+
+// Re-export types for convenience
+export type { FunctionBoundary, ImportStatement };
 
 /**
  * Options for reading Python source files

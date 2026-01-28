@@ -1,0 +1,588 @@
+{
+  "project": "Unknit",
+  "branchName": "ralph/unknit-mvp",
+  "description": "Unknit - Code review tool for rapidly reviewing AI-generated code through scannable hierarchical outlines",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Initialize monorepo with build tooling",
+      "description": "As a developer, I need a properly configured monorepo so that I can build and test all packages.",
+      "acceptanceCriteria": [
+        "Root package.json with pnpm workspaces configuration",
+        "pnpm-workspace.yaml defining packages/*",
+        "turbo.json for build orchestration across packages",
+        "tsconfig.base.json with shared TypeScript compiler options",
+        ".gitignore, .prettierrc, .eslintrc.js configured",
+        "pnpm install completes without errors",
+        "pnpm build runs across all packages",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Create @unknit/core package structure",
+      "description": "As a developer, I need the core package scaffolding so that I can implement the parser and utilities.",
+      "acceptanceCriteria": [
+        "packages/core/package.json with correct name and dependencies",
+        "packages/core/tsconfig.json extending base config",
+        "packages/core/src/index.ts with placeholder exports",
+        "Vitest configured for unit testing",
+        "Package builds successfully",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Define core type system",
+      "description": "As a developer, I need TypeScript interfaces for unknit AST nodes so that all packages share a consistent data model.",
+      "acceptanceCriteria": [
+        "SourceRef interface with file, startLine, endLine properties",
+        "UnknitNode interface with type, name, params, returnType, sourceRef, children",
+        "UnknitFile interface with source path and functions array",
+        "ValidationDiagnostic interface with severity, message, range",
+        "NodeType enum: fn, block, call, external_call, early_exit, return, error_handler",
+        "All types exported from packages/core/src/index.ts",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Implement unknit tokenizer",
+      "description": "As a developer, I need a tokenizer that breaks unknit syntax into tokens so that the parser can build an AST.",
+      "acceptanceCriteria": [
+        "Tokenizer handles keywords: fn, on",
+        "Tokenizer handles operators: ->, *->, @, (, ), :, |, ,",
+        "Tokenizer handles identifiers and optional markers (?)",
+        "Tokenizer handles indentation (tracks indent level)",
+        "Tokenizer handles source references {{src:file:line-line}}",
+        "Returns array of Token objects with type, value, line, column",
+        "Unit tests for each token type",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Implement unknit parser for function definitions",
+      "description": "As a developer, I need to parse function definition lines into AST nodes.",
+      "acceptanceCriteria": [
+        "Parses fn name(params) -> return: syntax",
+        "Parses optional parameters with ? suffix",
+        "Parses return type with optional error type (type | error)",
+        "Creates UnknitNode with type 'fn'",
+        "Unit tests for various function signatures",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Implement unknit parser for blocks and calls",
+      "description": "As a developer, I need to parse block hierarchy, calls, and returns into the AST.",
+      "acceptanceCriteria": [
+        "Parses indentation-based block hierarchy",
+        "Parses internal calls name() as 'call' node type",
+        "Parses external calls @name() as 'external_call' node type",
+        "Parses returns -> as 'return' node type",
+        "Parses early exits *-> as 'early_exit' node type",
+        "Parses error handlers on error: as 'error_handler' node type",
+        "Builds correct parent-child relationships based on indentation",
+        "Unit tests for nested structures",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Implement source reference extraction in parser",
+      "description": "As a developer, I need the parser to extract and attach source references to AST nodes.",
+      "acceptanceCriteria": [
+        "Extracts {{src:file:line-line}} patterns from lines",
+        "Attaches SourceRef to corresponding UnknitNode",
+        "Handles missing source references gracefully",
+        "Unit tests for source reference parsing",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Implement parse error handling",
+      "description": "As a developer, I need meaningful error messages when parsing fails so that invalid syntax can be corrected.",
+      "acceptanceCriteria": [
+        "Returns ParseError with line number and column",
+        "Error message describes what was expected vs found",
+        "Parser recovers and continues after error when possible",
+        "Collects multiple errors in single parse attempt",
+        "Unit tests for various error cases",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Implement unknit serializer",
+      "description": "As a developer, I need to convert AST back to .unknit text so that generated/updated files can be written to disk.",
+      "acceptanceCriteria": [
+        "Converts UnknitNode tree to valid unknit syntax",
+        "Embeds source references as {{src:file:line-line}}",
+        "Preserves correct indentation hierarchy (2 spaces per level)",
+        "Round-trip test: parse -> serialize -> parse produces identical AST",
+        "Unit tests for all node types",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Implement source file existence validator",
+      "description": "As a developer, I need to validate that source files referenced in unknit exist.",
+      "acceptanceCriteria": [
+        "Loads source file path from SourceRef",
+        "Reports error if source file doesn't exist",
+        "Reports error if line numbers exceed file bounds",
+        "Returns ValidationDiagnostic with severity 'error'",
+        "Unit tests with fixture files",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Implement source coverage validator",
+      "description": "As a developer, I need to validate that all source lines are covered by unknit blocks.",
+      "acceptanceCriteria": [
+        "Detects overlapping source references (same line covered twice)",
+        "Detects gaps in coverage (source lines not mapped)",
+        "Returns ValidationDiagnostic with severity 'warning' for coverage issues",
+        "Unit tests for overlap and gap scenarios",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Implement source-to-block mapper",
+      "description": "As a developer, I need bidirectional mapping between source lines and unknit blocks.",
+      "acceptanceCriteria": [
+        "getBlockForLine(file, line) returns owning UnknitNode",
+        "getLinesForBlock(node) returns SourceRef",
+        "getBlockPath(file, line) returns ancestor chain from root to leaf",
+        "Builds optimized line-to-block index for O(1) lookup",
+        "Handles nested blocks correctly",
+        "Unit tests for all mapping functions",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Implement smart updater for line shifts",
+      "description": "As a developer, I need automatic line number updates when source code changes.",
+      "acceptanceCriteria": [
+        "Detects line insertions (diff shows added lines)",
+        "Detects line deletions (diff shows removed lines)",
+        "Updates sourceRef line numbers accordingly",
+        "Preserves user edits to block names",
+        "Unit tests for insertion and deletion scenarios",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Implement structural change detection",
+      "description": "As a developer, I need to detect when source changes require LLM regeneration.",
+      "acceptanceCriteria": [
+        "Detects function added (new function not in unknit)",
+        "Detects function removed (unknit references missing function)",
+        "Detects function renamed (signature mismatch)",
+        "Returns flag indicating regeneration needed",
+        "Unit tests for structural change scenarios",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Create @unknit/generate package structure",
+      "description": "As a developer, I need the generate package scaffolding so that I can implement LLM-based generation.",
+      "acceptanceCriteria": [
+        "packages/generate/package.json with @anthropic-ai/sdk dependency",
+        "packages/generate/tsconfig.json extending base config",
+        "packages/generate/src/index.ts with placeholder exports",
+        "Package builds successfully",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Implement project configuration loader",
+      "description": "As a developer, I need to load project configuration for internal vs external package classification.",
+      "acceptanceCriteria": [
+        "Defines UnknitConfig TypeScript interface",
+        "Loads .unknit.yaml from project root using yaml library",
+        "Returns sensible defaults when no config file exists",
+        "Unit tests for config loading",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Implement package auto-detection",
+      "description": "As a developer, I need automatic detection of internal packages from project manifests.",
+      "acceptanceCriteria": [
+        "Auto-detects Python internal packages from pyproject.toml",
+        "Auto-detects JS/TS internal packages from package.json workspaces",
+        "Merges auto-detected with manually configured packages",
+        "Unit tests for Python and JS/TS projects",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Implement source code reader for Python",
+      "description": "As a developer, I need to extract metadata from Python source files for LLM context.",
+      "acceptanceCriteria": [
+        "Reads Python source file content",
+        "Extracts function boundaries (def statements with start/end lines)",
+        "Extracts import statements",
+        "Classifies imports as internal vs external using config",
+        "Returns structured CodeMetadata object",
+        "Unit tests with Python fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Implement source code reader for TypeScript",
+      "description": "As a developer, I need to extract metadata from TypeScript/JavaScript source files.",
+      "acceptanceCriteria": [
+        "Reads TS/JS source file content (.ts, .js, .tsx, .jsx)",
+        "Extracts function boundaries (function declarations, arrow functions, methods)",
+        "Extracts import statements",
+        "Classifies imports as internal vs external using config",
+        "Returns structured CodeMetadata object",
+        "Unit tests with TypeScript fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Implement LLM prompt builder",
+      "description": "As a developer, I need well-structured prompts for accurate unknit generation.",
+      "acceptanceCriteria": [
+        "Creates condensed unknit spec for system prompt",
+        "Builds system prompt with spec + generation rules",
+        "Builds user prompt with source code and metadata",
+        "Includes function boundaries as generation hints",
+        "Includes internal/external package classification",
+        "Adds few-shot examples for consistent output",
+        "Unit tests verify prompt structure",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Implement Anthropic LLM client",
+      "description": "As a developer, I need an LLM client to transform source code into unknit format.",
+      "acceptanceCriteria": [
+        "Initializes Anthropic SDK client with API key from environment",
+        "Implements generateUnknit(sourceCode, metadata) function",
+        "Handles API errors with retry logic (3 attempts)",
+        "Parses LLM response text",
+        "Returns raw unknit string or generation errors",
+        "Integration tests with mocked API responses",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Implement generation orchestrator",
+      "description": "As a developer, I need an end-to-end generator to create unknit files from source.",
+      "acceptanceCriteria": [
+        "Loads project configuration",
+        "Reads source file and extracts metadata",
+        "Builds LLM prompt",
+        "Calls LLM and receives response",
+        "Parses and validates unknit output using core parser",
+        "Writes .unknit file alongside source file",
+        "Returns GenerationResult with success status and any errors",
+        "End-to-end tests with fixture files",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Create @unknit/vscode package structure",
+      "description": "As a developer, I need the VS Code extension scaffolding.",
+      "acceptanceCriteria": [
+        "packages/vscode/package.json with VS Code extension manifest",
+        "Extension activationEvents configured for .unknit files",
+        "packages/vscode/tsconfig.json extending base config",
+        "packages/vscode/src/extension.ts with activate/deactivate stubs",
+        "esbuild configured for extension bundling",
+        "Extension loads in VS Code Extension Development Host",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Implement custom editor provider registration",
+      "description": "As a developer, I need to register a custom editor for .unknit files.",
+      "acceptanceCriteria": [
+        "CustomTextEditorProvider class implemented",
+        "Provider registered in extension activate()",
+        "package.json contributes.customEditors configured for .unknit",
+        "Opening .unknit file activates custom editor",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Implement custom editor HTML rendering",
+      "description": "As a user, I want .unknit files to display as formatted HTML in the editor.",
+      "acceptanceCriteria": [
+        "Parses .unknit file content on document open",
+        "Generates HTML with styled blocks for each AST node",
+        "Hides {{src:...}} metadata from display",
+        "Applies CSS for syntax highlighting (fn keyword, calls, returns)",
+        "Syncs webview when document changes",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Implement block expand/collapse UI",
+      "description": "As a user, I want to click blocks to expand and see source code.",
+      "acceptanceCriteria": [
+        "Each block has clickable expand/collapse chevron icon",
+        "Collapsed state shows unknit summary only",
+        "Clicking chevron sends message to extension host",
+        "Expand/collapse icons update (right arrow vs down arrow)",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Implement source code display on expand",
+      "description": "As a user, I want expanded blocks to show the actual source code inline.",
+      "acceptanceCriteria": [
+        "Extension reads source file using SourceRef",
+        "Extracts lines from startLine to endLine",
+        "Sends source content to webview",
+        "Webview displays source with syntax highlighting",
+        "Toggle state persists during editing session",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Implement Go to Source navigation",
+      "description": "As a user, I want to jump from unknit block to source code location.",
+      "acceptanceCriteria": [
+        "Double-click or context menu 'Go to Source' on block",
+        "Opens source file in editor",
+        "Cursor positioned at block's startLine",
+        "Works for all block types with SourceRef",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Implement Go to Unknit navigation",
+      "description": "As a user, I want to navigate from source code to the unknit block.",
+      "acceptanceCriteria": [
+        "Command 'Unknit: Go to Block' registered",
+        "Command available when cursor in source file with .unknit counterpart",
+        "Uses mapper to find block for current line",
+        "Opens .unknit file and scrolls to corresponding block",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Implement unknit.generate command",
+      "description": "As a user, I want a command to generate unknit file for current source.",
+      "acceptanceCriteria": [
+        "Command 'Unknit: Generate' registered in package.json",
+        "Command available when editing Python or TS/JS file",
+        "Calls generate package orchestrator",
+        "Shows progress notification during generation",
+        "Opens generated .unknit file on success",
+        "Shows error notification on failure",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-031",
+      "title": "Implement unknit.validate command",
+      "description": "As a user, I want a command to validate unknit file mappings.",
+      "acceptanceCriteria": [
+        "Command 'Unknit: Validate' registered",
+        "Runs core validator on current .unknit file",
+        "Displays validation results in output channel",
+        "Updates diagnostics collection with errors/warnings",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-032",
+      "title": "Implement unknit.sync command",
+      "description": "As a user, I want a command to sync unknit file after source changes.",
+      "acceptanceCriteria": [
+        "Command 'Unknit: Sync' registered",
+        "Runs smart updater to adjust line numbers",
+        "Saves updated .unknit file",
+        "Shows notification if structural changes detected",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-033",
+      "title": "Implement validation diagnostics display",
+      "description": "As a user, I want to see validation errors inline in the editor.",
+      "acceptanceCriteria": [
+        "DiagnosticCollection created for unknit",
+        "Validation runs on document open",
+        "Validation runs on document save",
+        "Invalid source references show as red underlines",
+        "Coverage gaps show as yellow warnings",
+        "Problems panel shows all diagnostics",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 33,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-034",
+      "title": "Implement source file watcher",
+      "description": "As a user, I want unknit files to auto-update when source changes.",
+      "acceptanceCriteria": [
+        "FileSystemWatcher monitors source files with .unknit counterparts",
+        "On source save: runs smart updater",
+        "Updates .unknit file with corrected sourceRefs",
+        "Shows notification when structural change detected",
+        "Notification has 'Regenerate' button",
+        "Typecheck passes",
+        "Verify in VS Code Extension Development Host"
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-035",
+      "title": "Package VS Code extension",
+      "description": "As a developer, I need the extension packaged for distribution.",
+      "acceptanceCriteria": [
+        "vsce packaging configured in package.json scripts",
+        "Extension icon created (128x128 PNG)",
+        "Extension README with feature overview",
+        "vsix package builds successfully",
+        "Extension installs from vsix in fresh VS Code",
+        "All commands work in packaged extension",
+        "Typecheck passes"
+      ],
+      "priority": 35,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
