@@ -22,7 +22,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.35.0",
+    "@google/genai": "^1.0.0",
     "@unknit/core": "workspace:*",
     "yaml": "^2.7.0"
   },

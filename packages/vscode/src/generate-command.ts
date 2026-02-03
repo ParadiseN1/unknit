@@ -16,19 +16,35 @@ function isSupportedFile(filePath: string): boolean {
 }
 
 /**
- * Gets the Anthropic API key from VS Code settings or environment.
+ * Gets the Vertex AI Project ID from VS Code settings or environment.
  * Returns undefined if not found.
  */
-function getApiKey(): string | undefined {
+function getProjectId(): string | undefined {
   // First check VS Code settings
   const config = vscode.workspace.getConfiguration('unknit');
-  const settingsKey = config.get<string>('anthropicApiKey');
-  if (settingsKey) {
-    return settingsKey;
+  const settingsProjectId = config.get<string>('vertexAiProjectId');
+  if (settingsProjectId) {
+    return settingsProjectId;
   }
 
   // Fall back to environment variable
-  return process.env['ANTHROPIC_API_KEY'];
+  return process.env['VERTEX_AI_PROJECT_ID'];
+}
+
+/**
+ * Gets the Vertex AI location from VS Code settings or environment.
+ * Defaults to 'us-central1' if not found.
+ */
+function getLocation(): string {
+  // First check VS Code settings
+  const config = vscode.workspace.getConfiguration('unknit');
+  const settingsLocation = config.get<string>('vertexAiLocation');
+  if (settingsLocation) {
+    return settingsLocation;
+  }
+
+  // Fall back to environment variable or default
+  return process.env['VERTEX_AI_LOCATION'] ?? 'us-central1';
 }
 
 /**
@@ -55,19 +71,21 @@ export async function generateCommand(): Promise<void> {
     return;
   }
 
-  // Get the API key
-  const apiKey = getApiKey();
-  if (!apiKey) {
+  // Get the project ID and location
+  const projectId = getProjectId();
+  const location = getLocation();
+
+  if (!projectId) {
     const result = await vscode.window.showErrorMessage(
-      'Anthropic API key not found. Set it in VS Code settings (unknit.anthropicApiKey) ' +
-        'or as the ANTHROPIC_API_KEY environment variable.',
+      'Vertex AI Project ID not found. Set it in VS Code settings (unknit.vertexAiProjectId) ' +
+        'or as the VERTEX_AI_PROJECT_ID environment variable.',
       'Open Settings'
     );
 
     if (result === 'Open Settings') {
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
-        'unknit.anthropicApiKey'
+        'unknit.vertexAiProjectId'
       );
     }
     return;
@@ -89,7 +107,8 @@ export async function generateCommand(): Promise<void> {
 
       try {
         const result = await generate(sourceFilePath, {
-          apiKey,
+          projectId,
+          location,
           projectRoot,
           writeOutput: true,
           validate: true,

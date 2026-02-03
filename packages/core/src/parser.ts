@@ -70,10 +70,14 @@ export class Parser {
       if (this.check(TokenType.FN)) {
         const fn = this.parseFunctionDefinition();
         functions.push(fn);
+      } else if (this.check(TokenType.IDENTIFIER)) {
+        // Allow top-level blocks (like main_flow:)
+        const block = this.parseCallOrBlock();
+        functions.push(block);
       } else {
         const token = this.peek();
         throw new ParseError(
-          `Expected 'fn' keyword, found '${token.value}'`,
+          `Expected 'fn' keyword or block, found '${token.value}'`,
           token.line,
           token.column,
           'fn',
@@ -103,7 +107,7 @@ export class Parser {
 
       if (this.isAtEnd()) break;
 
-      // Parse function definition
+      // Parse function definition or top-level block
       if (this.check(TokenType.FN)) {
         try {
           const fn = this.parseFunctionDefinitionWithRecovery();
@@ -118,11 +122,24 @@ export class Parser {
             throw e;
           }
         }
+      } else if (this.check(TokenType.IDENTIFIER)) {
+        // Allow top-level blocks (like main_flow:)
+        try {
+          const block = this.parseCallOrBlock();
+          functions.push(block);
+        } catch (e) {
+          if (e instanceof ParseError) {
+            this.addError(e);
+            this.synchronize();
+          } else {
+            throw e;
+          }
+        }
       } else {
         const token = this.peek();
         this.addError(
           new ParseError(
-            `Expected 'fn' keyword, found '${token.value}'`,
+            `Expected 'fn' keyword or block, found '${token.value}'`,
             token.line,
             token.column,
             'fn',
@@ -230,12 +247,18 @@ export class Parser {
     const params = this.parseParameters();
     this.consume(TokenType.RPAREN, "Expected ')' after parameters");
 
-    // Parse return type
-    this.consume(TokenType.ARROW, "Expected '->' for return type");
-    const { returnType, errorType } = this.parseReturnType();
+    // Parse optional return type
+    let returnType: string | undefined;
+    let errorType: string | undefined;
+
+    if (this.match(TokenType.ARROW)) {
+      const result = this.parseReturnType();
+      returnType = result.returnType;
+      errorType = result.errorType;
+    }
 
     // Consume the colon
-    this.consume(TokenType.COLON, "Expected ':' after return type");
+    this.consume(TokenType.COLON, "Expected ':' after function signature");
 
     // Try to capture source reference if present
     const sourceRef = this.tryConsumeSourceRef();
@@ -301,27 +324,70 @@ export class Parser {
 
   /**
    * Parse return type with optional error type.
-   * Syntax: type or type | error
+   * Syntax: type or type1, type2 or (type1, type2) or type | error
    */
   private parseReturnType(): { returnType: string; errorType?: string } {
-    const returnTypeToken = this.consume(
-      TokenType.IDENTIFIER,
-      'Expected return type'
-    );
-    const returnType = returnTypeToken.value;
+    let returnType = '';
+
+    // Handle tuple return types with parentheses: (type1, type2)
+    if (this.match(TokenType.LPAREN)) {
+      const types: string[] = [];
+      if (!this.check(TokenType.RPAREN)) {
+        types.push(this.consume(TokenType.IDENTIFIER, 'Expected type').value);
+        while (this.match(TokenType.COMMA)) {
+          types.push(this.consume(TokenType.IDENTIFIER, 'Expected type after comma').value);
+        }
+      }
+      this.consume(TokenType.RPAREN, "Expected ')' after tuple types");
+      returnType = '(' + types.join(', ') + ')';
+    } else {
+      const returnTypeToken = this.consume(
+        TokenType.IDENTIFIER,
+        'Expected return type'
+      );
+      returnType = returnTypeToken.value;
+
+      // Handle tuple return types without parentheses: type1, type2, ...
+      while (this.match(TokenType.COMMA)) {
+        const nextType = this.consume(
+          TokenType.IDENTIFIER,
+          'Expected type after comma'
+        );
+        returnType += ', ' + nextType.value;
+      }
+    }
 
     let errorType: string | undefined;
 
-    // Check for error type
+    // Check for error/alternative types (can be multiple: type1 | type2 | (tuple))
     if (this.match(TokenType.PIPE)) {
-      const errorTypeToken = this.consume(
-        TokenType.IDENTIFIER,
-        'Expected error type after |'
-      );
-      errorType = errorTypeToken.value;
+      const altTypes: string[] = [];
+      altTypes.push(this.parseTypeValue());
+      while (this.match(TokenType.PIPE)) {
+        altTypes.push(this.parseTypeValue());
+      }
+      errorType = altTypes.join(' | ');
     }
 
     return { returnType, errorType };
+  }
+
+  /**
+   * Parse a single type value (identifier or tuple)
+   */
+  private parseTypeValue(): string {
+    if (this.match(TokenType.LPAREN)) {
+      const types: string[] = [];
+      if (!this.check(TokenType.RPAREN)) {
+        types.push(this.consume(TokenType.IDENTIFIER, 'Expected type').value);
+        while (this.match(TokenType.COMMA)) {
+          types.push(this.consume(TokenType.IDENTIFIER, 'Expected type after comma').value);
+        }
+      }
+      this.consume(TokenType.RPAREN, "Expected ')' after tuple types");
+      return '(' + types.join(', ') + ')';
+    }
+    return this.consume(TokenType.IDENTIFIER, 'Expected type').value;
   }
 
   // Helper methods
@@ -332,6 +398,31 @@ export class Parser {
   private skipNewlines(): void {
     while (this.check(TokenType.NEWLINE)) {
       this.advance();
+    }
+  }
+
+  /**
+   * Skip tokens until we reach a right parenthesis.
+   * Used to skip arguments inside function calls.
+   */
+  private skipUntilRightParen(): void {
+    let depth = 1; // We've already consumed the opening paren
+    while (!this.isAtEnd() && depth > 0) {
+      if (this.check(TokenType.LPAREN)) {
+        depth++;
+        this.advance();
+      } else if (this.check(TokenType.RPAREN)) {
+        depth--;
+        if (depth > 0) {
+          this.advance();
+        }
+        // Don't consume the final RPAREN - let the caller do that
+      } else if (this.check(TokenType.NEWLINE) || this.check(TokenType.EOF)) {
+        // Don't go past the end of the line
+        break;
+      } else {
+        this.advance();
+      }
     }
   }
 
@@ -388,13 +479,18 @@ export class Parser {
   }
 
   /**
-   * Parse a single body element (call, return, early exit, error handler, or block).
+   * Parse a single body element (call, return, early exit, error handler, nested fn, or block).
    */
   private parseBodyElement(): UnknitNode | null {
     this.skipNewlines();
 
     if (this.isAtEnd() || this.check(TokenType.DEDENT)) {
       return null;
+    }
+
+    // Check for nested function definition: fn name()
+    if (this.check(TokenType.FN)) {
+      return this.parseFunctionDefinition();
     }
 
     // Check for error handler: on error:
@@ -430,15 +526,18 @@ export class Parser {
   /**
    * Parse an internal call or a block label.
    * Internal call: name() {{src:file:line-line}}
+   * Internal call with args: name(arg1, arg2) {{src:file:line-line}}
    * Block label: name: {{src:file:line-line}} (followed by indented children)
    */
   private parseCallOrBlock(): UnknitNode {
     const nameToken = this.advance();
     const name = nameToken.value;
 
-    // Check if this is a call: name()
+    // Check if this is a call: name() or name(args)
     if (this.check(TokenType.LPAREN)) {
       this.advance(); // consume (
+      // Skip any content inside parentheses (arguments)
+      this.skipUntilRightParen();
       this.consume(TokenType.RPAREN, "Expected ')' after call");
 
       // Try to capture source reference
@@ -495,6 +594,7 @@ export class Parser {
 
   /**
    * Parse an external call: @name() {{src:file:line-line}}
+   * Also handles method chaining: @service.users().labels().list().execute()
    */
   private parseExternalCall(): UnknitNode {
     this.advance(); // consume @
@@ -503,10 +603,19 @@ export class Parser {
       TokenType.IDENTIFIER,
       'Expected function name after @'
     );
-    const name = nameToken.value;
+    let name = nameToken.value;
 
     this.consume(TokenType.LPAREN, "Expected '(' after external function name");
+    // Skip any content inside parentheses (arguments)
+    this.skipUntilRightParen();
     this.consume(TokenType.RPAREN, "Expected ')' after external call");
+
+    // Handle method chaining: .method().method()...
+    // The tokenizer will see the dot as an unexpected character,
+    // so we need to consume any continuation of the chain
+    while (this.checkMethodChain()) {
+      name += this.consumeMethodChain();
+    }
 
     // Try to capture source reference
     const sourceRef = this.tryConsumeSourceRef();
@@ -522,6 +631,43 @@ export class Parser {
     node.children = this.parseNestedChildren();
 
     return node;
+  }
+
+  /**
+   * Check if the next tokens represent a method chain continuation: .identifier()
+   */
+  private checkMethodChain(): boolean {
+    // Check if the current token is an identifier starting with a dot
+    if (this.check(TokenType.IDENTIFIER)) {
+      const token = this.peek();
+      return token.value.startsWith('.');
+    }
+    return false;
+  }
+
+  /**
+   * Consume a method chain continuation: .identifier()
+   * Returns the consumed chain portion including the dot
+   */
+  private consumeMethodChain(): string {
+    let chain = '';
+
+    // Consume the .identifier part
+    if (this.check(TokenType.IDENTIFIER)) {
+      const token = this.advance();
+      chain += token.value;
+    }
+
+    // Consume () if present
+    if (this.check(TokenType.LPAREN)) {
+      this.advance(); // consume (
+      if (this.check(TokenType.RPAREN)) {
+        this.advance(); // consume )
+        chain += '()';
+      }
+    }
+
+    return chain;
   }
 
   /**

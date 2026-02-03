@@ -20,6 +20,11 @@
   ],
   "activationEvents": [
     "onLanguage:unknit",
+    "onLanguage:python",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
     "onCommand:unknit.goToBlock",
     "onCommand:unknit.generate",
     "onCommand:unknit.validate",
@@ -114,10 +119,16 @@
     "configuration": {
       "title": "Unknit",
       "properties": {
-        "unknit.anthropicApiKey": {
+        "unknit.vertexAiProjectId": {
           "type": "string",
           "default": "",
-          "description": "Anthropic API key for generating unknit files. Can also be set via the ANTHROPIC_API_KEY environment variable.",
+          "description": "Google Cloud Project ID for Vertex AI. Can also be set via VERTEX_AI_PROJECT_ID environment variable.",
+          "scope": "machine"
+        },
+        "unknit.vertexAiLocation": {
+          "type": "string",
+          "default": "us-central1",
+          "description": "Google Cloud region for Vertex AI (e.g., us-central1). Can also be set via VERTEX_AI_LOCATION environment variable.",
           "scope": "machine"
         }
       }

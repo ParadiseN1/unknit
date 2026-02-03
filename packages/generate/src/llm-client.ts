@@ -1,7 +1,7 @@
-// Anthropic LLM client for unknit generation
-// Transforms source code into unknit format using Claude API
+// Google Gen AI client for unknit generation
+// Transforms source code into unknit format using Gemini API via Vertex AI
 
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import type { CodeMetadata } from './index.js';
 import { buildPrompts, type PromptBuilderOptions } from './prompt-builder.js';
 
@@ -9,11 +9,13 @@ import { buildPrompts, type PromptBuilderOptions } from './prompt-builder.js';
  * Options for the LLM client
  */
 export interface LLMClientOptions {
-  // API key for Anthropic (defaults to ANTHROPIC_API_KEY env var)
-  apiKey?: string;
-  // Model to use (defaults to claude-sonnet-4-5-20250929)
+  // Google Cloud Project ID (defaults to VERTEX_AI_PROJECT_ID env var)
+  projectId?: string;
+  // Google Cloud Location (defaults to VERTEX_AI_LOCATION env var or 'global')
+  location?: string;
+  // Model to use (defaults to gemini-3-flash-preview)
   model?: string;
-  // Maximum tokens for response (defaults to 4096)
+  // Maximum tokens for response (defaults to 8192)
   maxTokens?: number;
   // Maximum retry attempts (defaults to 3)
   maxRetries?: number;
@@ -50,16 +52,18 @@ export interface LLMGenerationError {
 }
 
 // Default model to use
-const DEFAULT_MODEL = 'claude-sonnet-4-5-20250929';
+const DEFAULT_MODEL = 'gemini-3-flash-preview';
 // Default max tokens for response
-const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_MAX_TOKENS = 8192;
 // Default max retries
 const DEFAULT_MAX_RETRIES = 3;
 // Default timeout in ms
 const DEFAULT_TIMEOUT = 60000;
+// Default location
+const DEFAULT_LOCATION = 'global';
 
 /**
- * Generate unknit from source code using Anthropic API
+ * Generate unknit from source code using Google Gen AI API
  */
 export async function generateUnknit(
   sourceCode: string,
@@ -71,23 +75,34 @@ export async function generateUnknit(
 }
 
 /**
- * LLM Client class for Anthropic API interactions
+ * LLM Client class for Google Gen AI API interactions
  */
 export class LLMClient {
-  private client: Anthropic;
+  private client: GoogleGenAI;
   private model: string;
   private maxTokens: number;
   private maxRetries: number;
+  private timeout: number;
 
   constructor(options: LLMClientOptions = {}) {
-    this.client = new Anthropic({
-      apiKey: options.apiKey,
-      maxRetries: 0, // We handle retries ourselves for better error reporting
-      timeout: options.timeout ?? DEFAULT_TIMEOUT,
+    const projectId = options.projectId ?? process.env['VERTEX_AI_PROJECT_ID'];
+    const location = options.location ?? process.env['VERTEX_AI_LOCATION'] ?? DEFAULT_LOCATION;
+
+    if (!projectId) {
+      throw new Error('Vertex AI Project ID is required. Set VERTEX_AI_PROJECT_ID env var or pass projectId option.');
+    }
+
+    // Initialize the Google Gen AI SDK for Vertex AI
+    this.client = new GoogleGenAI({
+      vertexai: true,
+      project: projectId,
+      location,
     });
+
     this.model = options.model ?? DEFAULT_MODEL;
     this.maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
     this.maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+    this.timeout = options.timeout ?? DEFAULT_TIMEOUT;
   }
 
   /**
@@ -104,32 +119,51 @@ export class LLMClient {
 
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        const message = await this.client.messages.create({
-          model: this.model,
-          max_tokens: this.maxTokens,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userPrompt }],
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-        // Extract text content from response
-        const textContent = message.content.find((block) => block.type === 'text');
-        if (!textContent || textContent.type !== 'text') {
+        const result = await Promise.race([
+          this.client.models.generateContent({
+            model: this.model,
+            contents: userPrompt,
+            config: {
+              systemInstruction: systemPrompt,
+              maxOutputTokens: this.maxTokens,
+            },
+          }),
+          new Promise<never>((_, reject) => {
+            controller.signal.addEventListener('abort', () => {
+              reject(new Error('Request timeout'));
+            });
+          }),
+        ]);
+
+        clearTimeout(timeoutId);
+
+        const text = result.text;
+
+        if (!text) {
           return {
             success: false,
             error: {
               code: 'NO_TEXT_CONTENT',
-              message: 'LLM response did not contain text content',
+              message: 'Gemini response did not contain text content',
               retryable: false,
             },
           };
         }
 
+        // Extract token usage if available
+        const usageMetadata = result.usageMetadata;
+        const inputTokens = usageMetadata?.promptTokenCount ?? 0;
+        const outputTokens = usageMetadata?.candidatesTokenCount ?? 0;
+
         return {
           success: true,
-          content: textContent.text.trim(),
+          content: text.trim(),
           usage: {
-            inputTokens: message.usage.input_tokens,
-            outputTokens: message.usage.output_tokens,
+            inputTokens,
+            outputTokens,
           },
         };
       } catch (err) {
@@ -166,81 +200,86 @@ export class LLMClient {
    * Handle API errors and convert to LLMGenerationError
    */
   private handleError(err: unknown): LLMGenerationError {
-    if (err instanceof Anthropic.APIError) {
-      const status = err.status;
-      const isRetryable = this.isRetryableStatus(status);
+    // Handle Google API errors
+    if (err instanceof Error) {
+      const message = err.message;
 
-      // Map specific error types
-      if (err instanceof Anthropic.RateLimitError) {
+      // Check for specific error patterns
+      if (message.includes('429') || message.includes('rate limit') || message.includes('RATE_LIMIT_EXCEEDED')) {
         return {
           code: 'RATE_LIMIT',
           message: 'Rate limit exceeded',
-          status,
           retryable: true,
         };
       }
 
-      if (err instanceof Anthropic.AuthenticationError) {
+      if (message.includes('401') || message.includes('403') || message.includes('authentication') || message.includes('permission')) {
         return {
           code: 'AUTHENTICATION_ERROR',
-          message: 'Invalid API key',
-          status,
+          message: 'Invalid credentials or insufficient permissions',
           retryable: false,
         };
       }
 
-      if (err instanceof Anthropic.BadRequestError) {
+      if (message.includes('400') || message.includes('invalid')) {
         return {
           code: 'BAD_REQUEST',
-          message: err.message || 'Invalid request parameters',
-          status,
+          message: message || 'Invalid request parameters',
           retryable: false,
         };
       }
 
-      if (err instanceof Anthropic.InternalServerError) {
+      if (message.includes('500') || message.includes('502') || message.includes('503') || message.includes('504')) {
         return {
           code: 'SERVER_ERROR',
-          message: 'Anthropic API server error',
-          status,
+          message: 'Vertex AI server error',
           retryable: true,
         };
       }
 
-      // Generic API error
+      if (message.includes('timeout') || message.includes('ETIMEDOUT') || message.includes('ECONNREFUSED')) {
+        return {
+          code: 'CONNECTION_ERROR',
+          message: 'Failed to connect to Vertex AI API or request timed out',
+          retryable: true,
+        };
+      }
+
+      // Generic error
       return {
         code: 'API_ERROR',
-        message: err.message || 'Unknown API error',
-        status,
-        retryable: isRetryable,
-      };
-    }
-
-    // Connection errors are retryable
-    if (err instanceof Anthropic.APIConnectionError) {
-      return {
-        code: 'CONNECTION_ERROR',
-        message: 'Failed to connect to Anthropic API',
-        retryable: true,
+        message: message || 'Unknown API error',
+        retryable: this.isRetryableError(err),
       };
     }
 
     // Unknown error
-    const message = err instanceof Error ? err.message : 'Unknown error';
     return {
       code: 'UNKNOWN_ERROR',
-      message,
+      message: 'Unknown error occurred',
       retryable: false,
     };
   }
 
   /**
-   * Check if HTTP status code is retryable
+   * Check if error is retryable
    */
-  private isRetryableStatus(status: number | undefined): boolean {
-    if (!status) return false;
-    // Retry on rate limit (429) and server errors (5xx)
-    return status === 429 || status >= 500;
+  private isRetryableError(err: unknown): boolean {
+    if (err instanceof Error) {
+      const message = err.message.toLowerCase();
+      // Retry on network errors and server errors
+      return (
+        message.includes('timeout') ||
+        message.includes('network') ||
+        message.includes('econnrefused') ||
+        message.includes('etimedout') ||
+        message.includes('500') ||
+        message.includes('502') ||
+        message.includes('503') ||
+        message.includes('504')
+      );
+    }
+    return false;
   }
 
   /**

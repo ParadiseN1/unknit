@@ -437,11 +437,15 @@ export class Tokenizer {
   }
 
   private isIdentifierStart(char: string): boolean {
-    return /[a-zA-Z_]/.test(char);
+    // Allow dots for method chain continuations like .labels().list()
+    return /[a-zA-Z_.]/.test(char);
   }
 
   private isIdentifierChar(char: string): boolean {
-    return /[a-zA-Z0-9_]/.test(char);
+    // Allow dots for qualified names like service_account.Credentials.method()
+    // Allow slashes and hyphens for values like text/plain, mime-type
+    // Allow quotes for string values
+    return /[a-zA-Z0-9_.\/\-"']/.test(char);
   }
 }
 

@@ -231,7 +231,8 @@ export async function generate(
 
   // 5. Call LLM to generate unknit content
   const llmClient = new LLMClient({
-    apiKey: options.apiKey,
+    projectId: options.projectId,
+    location: options.location,
     model: options.model,
     maxTokens: options.maxTokens,
     maxRetries: options.maxRetries,
