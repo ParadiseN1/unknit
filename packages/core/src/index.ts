@@ -1,0 +1,81 @@
+// @unknit/core - Core types and utilities for unknit
+
+export const VERSION = '0.0.1';
+
+// Export all core types
+export {
+  type SourceRef,
+  type UnknitNode,
+  type UnknitFile,
+  type DiagnosticSeverity,
+  type DiagnosticRange,
+  type ValidationDiagnostic,
+  NodeType,
+} from './types.js';
+
+// Export tokenizer
+export {
+  type Token,
+  TokenType,
+  Tokenizer,
+  TokenizerError,
+  tokenize,
+} from './tokenizer.js';
+
+// Export parser
+export {
+  Parser,
+  ParseError,
+  type ParseResult,
+  parseFunctions,
+  parseFunctionsWithRecovery,
+  parseSourceRef,
+} from './parser.js';
+
+// Export serializer
+export {
+  Serializer,
+  serialize,
+  serializeSourceRef,
+} from './serializer.js';
+
+// Export validator
+export {
+  SourceFileValidator,
+  SourceCoverageValidator,
+  validateSourceRef,
+  validateNode,
+  validateNodes,
+  validateCoverage,
+  type ValidatorOptions,
+  type ValidationResult,
+  type CoverageExpectedRange,
+} from './validator.js';
+
+// Export source-to-block mapper
+export {
+  SourceBlockMapper,
+  getBlockForLine,
+  getLinesForBlock,
+  getBlockPath,
+} from './mapper.js';
+
+// Export smart updater
+export {
+  SmartUpdater,
+  detectLineShifts,
+  applyShiftsToSourceRef,
+  applyShiftsToNodes,
+  type LineShift,
+  type UpdateResult,
+} from './updater.js';
+
+// Export structural change detector
+export {
+  StructuralChangeDetector,
+  detectStructuralChanges,
+  StructuralChangeType,
+  type FunctionSignature,
+  type StructuralChange,
+  type StructuralChangeResult,
+} from './structural-detector.js';

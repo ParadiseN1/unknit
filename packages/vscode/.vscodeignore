@@ -1,0 +1,8 @@
+.turbo/
+node_modules/
+src/
+*.ts
+esbuild.config.js
+tsconfig.json
+.gitignore
+icon.svg

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="128" height="128" rx="20" ry="20" fill="url(#bgGradient)"/>
+  <!-- Unknit symbol - nested lines representing hierarchy -->
+  <g stroke="white" stroke-width="4" fill="none" stroke-linecap="round">
+    <!-- Top level line -->
+    <line x1="24" y1="32" x2="104" y2="32"/>
+    <!-- Second level - indented -->
+    <line x1="36" y1="52" x2="104" y2="52"/>
+    <!-- Third level - more indented -->
+    <line x1="48" y1="72" x2="104" y2="72"/>
+    <!-- Back to second level -->
+    <line x1="36" y1="92" x2="80" y2="92"/>
+  </g>
+  <!-- Connection dots -->
+  <g fill="white">
+    <circle cx="24" cy="32" r="4"/>
+    <circle cx="36" cy="52" r="4"/>
+    <circle cx="48" cy="72" r="4"/>
+    <circle cx="36" cy="92" r="4"/>
+  </g>
+  <!-- Arrow indicator -->
+  <path d="M90 92 L100 92 L95 100 Z" fill="white"/>
+</svg>

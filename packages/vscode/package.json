@@ -1,0 +1,155 @@
+{
+  "name": "unknit-vscode",
+  "displayName": "Unknit",
+  "description": "Code review tool for rapidly reviewing AI-generated code through scannable hierarchical outlines",
+  "version": "0.0.1",
+  "publisher": "unknit",
+  "private": true,
+  "icon": "icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/unknit/unknit"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onLanguage:unknit",
+    "onLanguage:python",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onCommand:unknit.goToBlock",
+    "onCommand:unknit.generate",
+    "onCommand:unknit.validate",
+    "onCommand:unknit.sync"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "unknit",
+        "aliases": [
+          "Unknit",
+          "unknit"
+        ],
+        "extensions": [
+          ".unknit"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "unknit.goToBlock",
+        "title": "Unknit: Go to Block"
+      },
+      {
+        "command": "unknit.generate",
+        "title": "Unknit: Generate"
+      },
+      {
+        "command": "unknit.validate",
+        "title": "Unknit: Validate"
+      },
+      {
+        "command": "unknit.sync",
+        "title": "Unknit: Sync"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "unknit.editor",
+        "displayName": "Unknit Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.unknit"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "unknit.goToBlock",
+          "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact",
+          "group": "navigation"
+        },
+        {
+          "command": "unknit.generate",
+          "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact",
+          "group": "navigation"
+        },
+        {
+          "command": "unknit.validate",
+          "when": "resourceLangId == unknit",
+          "group": "navigation"
+        },
+        {
+          "command": "unknit.sync",
+          "when": "resourceLangId == unknit",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "unknit.goToBlock",
+          "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
+        },
+        {
+          "command": "unknit.generate",
+          "when": "resourceLangId == python || resourceLangId == typescript || resourceLangId == typescriptreact || resourceLangId == javascript || resourceLangId == javascriptreact"
+        },
+        {
+          "command": "unknit.validate",
+          "when": "resourceLangId == unknit"
+        },
+        {
+          "command": "unknit.sync",
+          "when": "resourceLangId == unknit"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Unknit",
+      "properties": {
+        "unknit.vertexAiProjectId": {
+          "type": "string",
+          "default": "",
+          "description": "Google Cloud Project ID for Vertex AI. Can also be set via VERTEX_AI_PROJECT_ID environment variable.",
+          "scope": "machine"
+        },
+        "unknit.vertexAiLocation": {
+          "type": "string",
+          "default": "us-central1",
+          "description": "Google Cloud region for Vertex AI (e.g., us-central1). Can also be set via VERTEX_AI_LOCATION environment variable.",
+          "scope": "machine"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "build:watch": "node esbuild.config.js --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@unknit/core": "workspace:*",
+    "@unknit/generate": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.3.0"
+  }
+}
